@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>LearnFlow - Chrome Web Store Promo Banner (1280x800)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 1280px;
+      height: 800px;
+      overflow: hidden;
+      background: radial-gradient(circle at 20% 20%, #1e1b4b 0%, #0f172a 60%, #020617 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 60px 80px;
+      position: relative;
+    }
+
+    /* Ambient glow circles */
+    .glow-1 {
+      position: absolute;
+      width: 500px;
+      height: 500px;
+      background: rgba(59, 130, 246, 0.15);
+      filter: blur(120px);
+      top: -100px;
+      left: -100px;
+      border-radius: 50%;
+      z-index: 1;
+    }
+    .glow-2 {
+      position: absolute;
+      width: 450px;
+      height: 450px;
+      background: rgba(168, 85, 247, 0.15);
+      filter: blur(120px);
+      bottom: -100px;
+      right: -100px;
+      border-radius: 50%;
+      z-index: 1;
+    }
+
+    .header-area {
+      z-index: 2;
+    }
+    .brand-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #38bdf8;
+      margin-bottom: 20px;
+    }
+    .brand-badge span { color: #f43f5e; }
+
+    h1 {
+      font-size: 46px;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -1px;
+      margin-bottom: 14px;
+      background: linear-gradient(135deg, #ffffff 40%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    p.subtext {
+      font-size: 20px;
+      color: #94a3b8;
+      max-width: 800px;
+      line-height: 1.5;
+    }
+
+    /* Interactive visual representation */
+    .mockup-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 32px;
+      z-index: 2;
+      align-items: center;
+      margin-top: 20px;
+    }
+
+    .book-card {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      padding: 30px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(16px);
+      position: relative;
+    }
+
+    .book-meta {
+      font-size: 12px;
+      font-weight: 700;
+      color: #38bdf8;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+    }
+
+    .book-heading {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: #ffffff;
+    }
+
+    .highlighted-paragraph {
+      background: rgba(254, 240, 138, 0.25);
+      border-left: 4px solid #eab308;
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 15px;
+      line-height: 1.6;
+      color: #fef08a;
+      margin-bottom: 24px;
+      box-shadow: 0 0 20px rgba(234, 179, 8, 0.2);
+    }
+
+    /* Floating Pill Overlay in Mockup */
+    .pill-mockup {
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 9999px;
+      padding: 10px 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+
+    .pill-btn-play {
+      width: 32px;
+      height: 32px;
+      background: #2563eb;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 14px;
+    }
+
+    .wave-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 16px;
+    }
+    .wave-bar {
+      width: 3px;
+      background: #38bdf8;
+      border-radius: 1px;
+      animation: wave 0.8s infinite alternate ease-in-out;
+    }
+    .wave-bar:nth-child(1) { height: 6px; }
+    .wave-bar:nth-child(2) { height: 16px; animation-delay: 0.2s; }
+    .wave-bar:nth-child(3) { height: 10px; animation-delay: 0.4s; }
+
+    @keyframes wave {
+      0% { height: 4px; }
+      100% { height: 16px; }
+    }
+
+    .gemini-pill {
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899);
+      padding: 6px 12px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 700;
+      color: white;
+    }
+
+    /* Feature tags grid */
+    .feature-card {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      backdrop-filter: blur(12px);
+    }
+
+    .feature-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 14px;
+      color: #e2e8f0;
+      font-weight: 500;
+    }
+    .feature-icon {
+      width: 32px;
+      height: 32px;
+      background: rgba(59, 130, 246, 0.2);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: #60a5fa;
+    }
+
+    .footer-tags {
+      z-index: 2;
+      display: flex;
+      gap: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+    }
+    .footer-tag {
+      background: rgba(255, 255, 255, 0.04);
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+  </style>
+</head>
+<body>
+  <div class="glow-1"></div>
+  <div class="glow-2"></div>
+
+  <div class="header-area">
+    <div class="brand-badge">🎧 <span>LearnFlow</span> v1.2.0 • Chrome Companion</div>
+    <h1>Continuous Audiobook Mode<br>& Ask Gemini AI for Tech Docs</h1>
+    <p class="subtext">Auto-navigate O'Reilly chapters, listen to tutorials hands-free, translate code into plain spoken English, and sync study guides to Obsidian & Google Drive.</p>
+  </div>
+
+  <div class="mockup-grid">
+    <div class="book-card">
+      <div class="book-meta">O'Reilly Learning • Chapter 4: Distributed Event Streaming</div>
+      <div class="book-heading">Configuring High-Throughput Kafka Consumers</div>
+      
+      <div class="highlighted-paragraph">
+        "When designing partition consumer groups, assign partitions evenly across consumers to prevent lag spikes during peak ingestion windows..."
+      </div>
+
+      <div class="pill-mockup">
+        <div class="pill-btn-play">▶</div>
+        <div class="wave-bars">
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+        </div>
+        <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">1.25x</span>
+        <div class="gemini-pill">✨ Ask Gemini</div>
+        <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; padding: 4px 8px; border-radius: 8px; font-weight: 600;">🔄 Auto-Next ON</span>
+      </div>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-row">
+        <div class="feature-icon">🔄</div>
+        <div>
+          <div style="font-weight: 700; color: #fff;">Hands-Free Auto-Flip</div>
+          <div style="font-size: 12px; color: #94a3b8;">Advances to the next chapter & resumes reading</div>
+        </div>
+      </div>
+
+      <div class="feature-row">
+        <div class="feature-icon">💻</div>
+        <div>
+          <div style="font-weight: 700; color: #fff;">Code Whisperer</div>
+          <div style="font-size: 12px; color: #94a3b8;">Explains complex code blocks conversationally</div>
+        </div>
+      </div>
+
+      <div class="feature-row">
+        <div class="feature-icon">📑</div>
+        <div>
+          <div style="font-weight: 700; color: #fff;">Multi-Tab Queue</div>
+          <div style="font-size: 12px; color: #94a3b8;">Playlist autoplay across documentation & videos</div>
+        </div>
+      </div>
+
+      <div class="feature-row">
+        <div class="feature-icon">📇</div>
+        <div>
+          <div style="font-weight: 700; color: #fff;">Instant Anki Cards</div>
+          <div style="font-size: 12px; color: #94a3b8;">Generates active-recall flashcard decks (.csv)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-tags">
+    <div class="footer-tag">Manifest V3 Compliant</div>
+    <div class="footer-tag">On-Device Gemini Nano + Cloud Flash</div>
+    <div class="footer-tag">Obsidian & Google Drive Sync</div>
+    <div class="footer-tag">100% Free & Open Source</div>
+  </div>
+</body>
+</html>

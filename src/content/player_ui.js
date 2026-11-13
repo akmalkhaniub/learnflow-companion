@@ -1,6 +1,6 @@
 /**
  * PlayerUI - Injected draggable floating widget with audio playback,
- * Ask Gemini Audio Briefings, Code Whisperer, Sleep Timer, Multi-Tab Queue, and Cloud Sync.
+ * Soundwave Equalizer, Ask Gemini Audio Briefings, Code Whisperer, Sleep Timer, Multi-Tab Queue, and Cloud Sync.
  */
 class PlayerUI {
   constructor(audioPlayer, onArchiveRequest, onGeminiBriefRequest, onAddToQueueRequest) {
@@ -43,6 +43,13 @@ class PlayerUI {
         <div class="learnflow-controls">
           <button class="learnflow-btn" id="lf-btn-prev" title="Previous sentence">⏮</button>
           <button class="learnflow-btn learnflow-btn-primary" id="lf-btn-play" title="Play / Pause (Alt+L)">▶</button>
+          
+          <div class="lf-equalizer" id="lf-sound-equalizer" title="Speaking">
+            <div class="lf-bar-line"></div>
+            <div class="lf-bar-line"></div>
+            <div class="lf-bar-line"></div>
+          </div>
+
           <button class="learnflow-btn" id="lf-btn-next" title="Next sentence">⏭</button>
           <button class="learnflow-btn" id="lf-btn-stop" title="Stop">⏹</button>
         </div>
@@ -107,6 +114,7 @@ class PlayerUI {
     const geminiBtn = this.root.querySelector('#lf-btn-gemini');
     const addQueueBtn = this.root.querySelector('#lf-btn-add-queue');
     const minimizeBtn = this.root.querySelector('#lf-btn-minimize');
+    const equalizer = this.root.querySelector('#lf-sound-equalizer');
 
     playBtn.addEventListener('click', () => {
       if (this.audioPlayer.isPlaying) {
@@ -164,6 +172,9 @@ class PlayerUI {
 
     this.audioPlayer.onStateChange = (state) => {
       playBtn.textContent = state.isPlaying ? '⏸' : '▶';
+      if (equalizer) {
+        equalizer.classList.toggle('active', state.isPlaying);
+      }
     };
 
     this.audioPlayer.onProgress = (prog) => {

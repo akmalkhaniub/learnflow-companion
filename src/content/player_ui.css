@@ -44,7 +44,7 @@
   padding: 8px 16px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
   color: var(--lf-text);
   font-size: 13px;
@@ -60,9 +60,11 @@
 
 .learnflow-bar.minimized .learnflow-controls,
 .learnflow-bar.minimized .learnflow-info,
-.learnflow-bar.minimized .learnflow-speed,
+.learnflow-bar.minimized .learnflow-speed-select,
+.learnflow-bar.minimized .learnflow-toggle,
 .learnflow-bar.minimized .learnflow-badge,
-.learnflow-bar.minimized .lf-gemini-btn {
+.learnflow-bar.minimized .lf-gemini-btn,
+.learnflow-bar.minimized .lf-equalizer {
   display: none !important;
 }
 
@@ -100,6 +102,35 @@
 
 .learnflow-btn-primary:hover {
   background: var(--lf-primary-hover);
+}
+
+/* Equalizer Soundwave Animation */
+.lf-equalizer {
+  display: none;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+  padding: 0 2px;
+}
+
+.lf-equalizer.active {
+  display: flex;
+}
+
+.lf-bar-line {
+  width: 2.5px;
+  background: #38bdf8;
+  border-radius: 1px;
+  animation: lfWave 0.8s ease-in-out infinite alternate;
+}
+
+.lf-bar-line:nth-child(1) { height: 4px; animation-delay: 0.1s; }
+.lf-bar-line:nth-child(2) { height: 12px; animation-delay: 0.3s; }
+.lf-bar-line:nth-child(3) { height: 7px; animation-delay: 0.2s; }
+
+@keyframes lfWave {
+  0% { height: 3px; }
+  100% { height: 14px; }
 }
 
 /* Gemini Sparkle Gradient Button */
@@ -161,7 +192,7 @@
 .learnflow-info {
   display: flex;
   flex-direction: column;
-  min-width: 90px;
+  min-width: 80px;
 }
 
 .learnflow-progress-text {
