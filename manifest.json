@@ -1,0 +1,87 @@
+{
+  "manifest_version": 3,
+  "name": "LearnFlow - Hands-Free Reader & Ask Gemini Companion",
+  "version": "1.1.0",
+  "description": "Auto-tracks learning, listens to O'Reilly & tutorials hands-free, Ask Gemini Q&A/audio briefings, and archives to local & Google Drive.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs",
+    "downloads",
+    "sidePanel",
+    "identity",
+    "scripting",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "omnibox": {
+    "keyword": "lf"
+  },
+  "commands": {
+    "toggle-play": {
+      "suggested_key": {
+        "default": "Alt+L",
+        "mac": "Alt+L"
+      },
+      "description": "Toggle audio play/pause"
+    },
+    "open-sidepanel": {
+      "suggested_key": {
+        "default": "Alt+Shift+L",
+        "mac": "Alt+Shift+L"
+      },
+      "description": "Open LearnFlow & Ask Gemini Side Panel"
+    },
+    "ask-gemini": {
+      "suggested_key": {
+        "default": "Alt+G",
+        "mac": "Alt+G"
+      },
+      "description": "Trigger Ask Gemini audio brief"
+    }
+  },
+  "background": {
+    "service_worker": "src/background/service_worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    },
+    "default_title": "LearnFlow & Ask Gemini"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "src/utils/markdown_builder.js",
+        "src/utils/gemini_ai.js",
+        "src/content/extractor.js",
+        "src/content/auto_navigator.js",
+        "src/content/audio_player.js",
+        "src/content/youtube_handler.js",
+        "src/content/player_ui.js",
+        "src/content/content_main.js"
+      ],
+      "css": ["src/content/player_ui.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*", "src/content/player_ui.css"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

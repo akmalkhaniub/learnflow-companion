@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>LearnFlow Companion</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="logo-area">
+      <div class="logo-icon">LF</div>
+      <div>
+        <h1>LearnFlow & Ask Gemini</h1>
+        <p class="subtitle">Hands-Free Reader & AI Companion</p>
+      </div>
+    </div>
+    <div class="quick-status">
+      <span class="status-indicator online" id="status-tag">Active</span>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="tabs-nav">
+    <button class="tab-btn active" data-tab="gemini">✨ Ask Gemini</button>
+    <button class="tab-btn" data-tab="vault">📁 Vault (<span id="vault-count">0</span>)</button>
+    <button class="tab-btn" data-tab="history">🕒 History (<span id="history-count">0</span>)</button>
+    <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
+  </nav>
+
+  <!-- Tab 0: Ask Gemini -->
+  <section class="tab-content active" id="tab-gemini">
+    <div class="context-banner" id="gemini-active-tab-banner">
+      <span class="context-icon">🌐</span>
+      <span class="context-title" id="active-tab-title">Detecting active page...</span>
+    </div>
+
+    <!-- Quick action chips -->
+    <div class="quick-chips-row">
+      <button class="chip-btn" id="chip-audio-brief">🎙️ 2-Min Audio Brief</button>
+      <button class="chip-btn" id="chip-takeaways">📝 Key Takeaways</button>
+      <button class="chip-btn" id="chip-explain-code">💡 Explain Code & Tables</button>
+    </div>
+
+    <!-- AI Output Box -->
+    <div class="gemini-response-box" id="gemini-response-box">
+      <div class="empty-state">
+        <p>Ask Gemini about this tutorial, book, or video</p>
+        <span>Generate a quick spoken brief, extract takeaways, or ask specific technical questions.</span>
+      </div>
+    </div>
+
+    <!-- Action bar below response -->
+    <div class="gemini-action-bar" id="gemini-action-bar" style="display: none;">
+      <button class="secondary-btn" id="btn-speak-gemini-response">▶ Listen to Answer</button>
+      <button class="secondary-btn" id="btn-save-gemini-to-vault">💾 Save to Vault</button>
+    </div>
+
+    <!-- Query Input -->
+    <div class="gemini-input-row">
+      <input type="text" id="gemini-user-prompt" class="search-input" placeholder="Ask Gemini about this page or video (or type 'lf' in URL bar)...">
+      <button class="primary-btn" id="btn-send-gemini-query">Ask</button>
+    </div>
+  </section>
+
+  <!-- Tab 1: Vault (Archived Books, Tutorials, YouTube Guides) -->
+  <section class="tab-content" id="tab-vault">
+    <div class="search-bar-row">
+      <input type="text" id="vault-search" class="search-input" placeholder="Search saved chapters, books, videos...">
+      <select id="vault-filter" class="filter-select">
+        <option value="all">All</option>
+        <option value="OReilly">O'Reilly</option>
+        <option value="GoogleSkills">Google Skills</option>
+        <option value="YouTube">YouTube</option>
+      </select>
+    </div>
+
+    <div class="items-list" id="vault-items-list">
+      <div class="empty-state">
+        <p>No archived content yet.</p>
+        <span>Open O'Reilly, Google Skills, or YouTube and click 💾 Archive on the floating bar!</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tab 2: Auto-Tracked History -->
+  <section class="tab-content" id="tab-history">
+    <div class="search-bar-row">
+      <input type="text" id="history-search" class="search-input" placeholder="Search tracked history...">
+      <button class="action-btn" id="btn-clear-history" title="Clear history">🗑️</button>
+    </div>
+
+    <div class="items-list" id="history-items-list">
+      <div class="empty-state">
+        <p>No history logged yet.</p>
+        <span>Pages and videos you visit will be logged here automatically.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tab 3: Settings & Cloud Sync -->
+  <section class="tab-content" id="tab-settings">
+    <div class="settings-card">
+      <h3>✨ Gemini AI Configuration</h3>
+      <p class="setting-desc">Supports on-device <b>Gemini Nano</b> (built into Chrome) or the <b>Gemini 2.0 / 1.5 Flash API</b> (Free tier).</p>
+      
+      <div class="form-group">
+        <label>Google Gemini API Key (Optional if Chrome Gemini Nano is enabled):</label>
+        <input type="password" id="setting-gemini-key" class="text-input" placeholder="AIzaSy...">
+        <span class="folder-status-text">Get a free key from <a href="https://aistudio.google.com" target="_blank" style="color: #60a5fa;">Google AI Studio</a></span>
+      </div>
+      <button class="primary-btn" id="btn-save-gemini-key">Save Gemini Key</button>
+      <div id="nano-status-label" class="status-msg" style="margin-top: 8px;"></div>
+    </div>
+
+    <div class="settings-card">
+      <h3>📁 Local Drive Storage</h3>
+      <p class="setting-desc">Files (Markdown with tables & embedded illustrations) are stored automatically in:</p>
+      <div class="code-box">Downloads/LearnFlow_Vault/[Category]/[Book]/</div>
+      
+      <div class="btn-group-row">
+        <button class="secondary-btn" id="btn-pick-local-folder">📂 Pick Custom Folder (File System Access)</button>
+      </div>
+      <div id="custom-folder-label" class="folder-status-text">Using default Downloads folder</div>
+    </div>
+
+    <div class="settings-card">
+      <h3>☁️ Google Drive Sync</h3>
+      <p class="setting-desc">Auto-sync notes directly to a <code>LearnFlow Vault</code> folder in your Google Drive.</p>
+      
+      <div class="form-group">
+        <label>Google Apps Script Webhook URL:</label>
+        <input type="url" id="setting-gdrive-webhook" class="text-input" placeholder="https://script.google.com/macros/s/.../exec">
+      </div>
+
+      <div class="form-group">
+        <button class="primary-btn" id="btn-save-gdrive-settings">Save Webhook URL</button>
+        <button class="secondary-btn" id="btn-copy-script-code" title="Copy 15-line Google Apps Script to paste into script.google.com">📋 Copy Apps Script Code</button>
+      </div>
+      <div id="gdrive-status-msg" class="status-msg"></div>
+    </div>
+
+    <div class="settings-card">
+      <h3>🎙️ Text-To-Speech (Native Voices)</h3>
+      <div class="form-group">
+        <label>Voice:</label>
+        <select id="setting-voice-select" class="select-input"></select>
+      </div>
+
+      <div class="form-group">
+        <label>Default Speed Rate:</label>
+        <input type="range" id="setting-speed-slider" min="0.8" max="2.2" step="0.1" value="1.0">
+        <span id="speed-slider-label">1.0x</span>
+      </div>
+
+      <div class="form-group">
+        <label>Auto-Advance Delay (seconds):</label>
+        <input type="number" id="setting-nav-delay" class="text-input" min="1" max="10" value="2">
+      </div>
+    </div>
+
+    <div class="settings-card">
+      <h3>📤 Export & Backup</h3>
+      <div class="btn-group-row">
+        <button class="secondary-btn" id="btn-export-history">Export History (JSON)</button>
+        <button class="secondary-btn" id="btn-export-vault">Export Vault Index (JSON)</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="../utils/gemini_ai.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
