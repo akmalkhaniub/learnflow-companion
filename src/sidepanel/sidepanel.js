@@ -1,10 +1,11 @@
 /**
  * sidepanel.js - Interactive Side Panel controller for LearnFlow & Ask Gemini
- * Manages Gemini Q&A, Audio Briefs, Vault items, Auto-Tracked history, and Settings.
+ * Manages Gemini Q&A, Multi-Tab Queue Playlist, Anki Export, Vault items, and Settings.
  */
 
 let currentTabInfo = null;
 let lastGeminiResponse = '';
+let cachedPlaylist = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Tab Navigation
@@ -20,6 +21,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       btn.classList.add('active');
       document.getElementById(`tab-${target}`).classList.add('active');
 
+      if (target === 'playlist') loadPlaylist();
       if (target === 'vault') loadVaultItems();
       if (target === 'history') loadHistoryItems();
     });
@@ -28,10 +30,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Detect Active Browser Tab
   await detectActiveTab();
 
-  // Initialize Gemini Tab
+  // Initialize Features
   initGeminiTab();
+  initPlaylistTab();
 
-  // Load Vault, History, and Settings
+  // Load Data
+  await loadPlaylist();
   await loadVaultItems();
   await loadHistoryItems();
   await initSettings();
@@ -49,6 +53,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   chrome.storage.onChanged.addListener((changes) => {
     if (changes.learnflow_vault_items) loadVaultItems();
     if (changes.learnflow_history) loadHistoryItems();
+    if (changes.learnflow_playlist) loadPlaylist();
     if (changes.learnflow_pending_query) checkPendingQuery();
   });
 });
@@ -82,6 +87,7 @@ function initGeminiTab() {
   const actionBar = document.getElementById('gemini-action-bar');
   const speakBtn = document.getElementById('btn-speak-gemini-response');
   const saveBtn = document.getElementById('btn-save-gemini-to-vault');
+  const exportAnkiBtn = document.getElementById('btn-export-anki-csv');
 
   // Quick Action Chips
   document.getElementById('chip-audio-brief')?.addEventListener('click', () => {
@@ -94,6 +100,21 @@ function initGeminiTab() {
 
   document.getElementById('chip-explain-code')?.addEventListener('click', () => {
     executeGeminiQuery('Find the key code blocks or technical procedures on this page and explain what they do in simple, clear spoken language.');
+  });
+
+  document.getElementById('chip-anki-cards')?.addEventListener('click', async () => {
+    if (exportAnkiBtn) exportAnkiBtn.style.display = 'inline-block';
+    executeGeminiQuery('Generate 5 high-yield active-recall Anki flashcards from this content formatted as Q: and A:');
+  });
+
+  document.getElementById('chip-search-vault')?.addEventListener('click', async () => {
+    const data = await chrome.storage.local.get(['learnflow_vault_items']);
+    const items = data.learnflow_vault_items || [];
+    responseBox.innerHTML = `<em>🔍 Searching across ${items.length} saved vault items with Gemini...</em>`;
+    const ans = await GeminiAI.searchVault(items, queryInput.value.trim() || 'Summarize the technical topics I have been studying recently');
+    lastGeminiResponse = ans;
+    responseBox.textContent = ans;
+    if (actionBar) actionBar.style.display = 'flex';
   });
 
   // Query Submit
@@ -123,6 +144,39 @@ function initGeminiTab() {
     window.speechSynthesis.speak(utter);
   });
 
+  // Export Anki CSV
+  exportAnkiBtn?.addEventListener('click', () => {
+    if (!lastGeminiResponse) return;
+    const cards = [];
+    const lines = lastGeminiResponse.split('\n');
+    let q = '', a = '';
+    for (const line of lines) {
+      if (line.startsWith('Q:') || line.startsWith('**Q:')) {
+        q = line.replace(/^\*?\*?Q:\*?\*?\s*/i, '').trim();
+      } else if (line.startsWith('A:') || line.startsWith('**A:')) {
+        a = line.replace(/^\*?\*?A:\*?\*?\s*/i, '').trim();
+        if (q && a) {
+          cards.push(`"${q.replace(/"/g, '""')}","${a.replace(/"/g, '""')}"`);
+          q = ''; a = '';
+        }
+      }
+    }
+
+    if (!cards.length) {
+      alert('Could not parse Q&A format. Try asking Gemini specifically for Q: and A: flashcards.');
+      return;
+    }
+
+    const csvContent = cards.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `anki_flashcards_${Date.now()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  });
+
   // Save Gemini Response into Vault
   saveBtn?.addEventListener('click', async () => {
     if (!lastGeminiResponse || !currentTabInfo) return;
@@ -149,6 +203,66 @@ function initGeminiTab() {
 }
 
 /**
+ * Multi-Tab Playlist Queue Logic
+ */
+function initPlaylistTab() {
+  document.getElementById('btn-play-queue-now')?.addEventListener('click', async () => {
+    if (!cachedPlaylist.length) {
+      alert('Your playlist queue is empty. Add pages with ➕ Queue on the floating bar!');
+      return;
+    }
+    chrome.runtime.sendMessage({ action: 'PLAYLIST_ADVANCE' });
+  });
+
+  document.getElementById('btn-clear-playlist')?.addEventListener('click', async () => {
+    if (confirm('Clear your playlist queue?')) {
+      await chrome.storage.local.set({ learnflow_playlist: [] });
+      loadPlaylist();
+    }
+  });
+}
+
+async function loadPlaylist() {
+  const data = await chrome.storage.local.get(['learnflow_playlist']);
+  cachedPlaylist = data.learnflow_playlist || [];
+
+  const countEl = document.getElementById('playlist-count');
+  if (countEl) countEl.textContent = cachedPlaylist.length;
+
+  const container = document.getElementById('playlist-items-list');
+  if (!container) return;
+
+  if (!cachedPlaylist.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <p>Your Playlist Queue is empty.</p>
+        <span>Click ➕ Queue on the floating bar on any tab to line up chapters, tutorials, and YouTube videos!</span>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = cachedPlaylist.map((item, idx) => `
+    <div class="item-card" style="display: flex; justify-content: space-between; align-items: center;">
+      <div style="flex: 1; min-width: 0; padding-right: 8px;">
+        <span class="item-badge">#${idx + 1} ${escapeHtml(item.siteType || 'QUEUE')}</span>
+        <a href="${escapeHtml(item.url)}" target="_blank" class="item-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(item.title)}</a>
+      </div>
+      <button class="action-btn btn-remove-queue-item" data-index="${idx}" title="Remove item">✕</button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.btn-remove-queue-item').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const idx = parseInt(e.target.dataset.index, 10);
+      cachedPlaylist.splice(idx, 1);
+      await chrome.storage.local.set({ learnflow_playlist: cachedPlaylist });
+      loadPlaylist();
+    });
+  });
+}
+
+/**
  * Execute query to Gemini with active tab context
  */
 async function executeGeminiQuery(prompt) {
@@ -160,7 +274,6 @@ async function executeGeminiQuery(prompt) {
   if (actionBar) actionBar.style.display = 'none';
 
   try {
-    // Attempt to extract page text from active tab
     let pageContext = '';
     if (currentTabInfo?.id) {
       try {
@@ -194,7 +307,6 @@ async function checkPendingQuery() {
     const { prompt } = data.learnflow_pending_query;
     await chrome.storage.local.remove(['learnflow_pending_query']);
 
-    // Switch to Gemini tab
     document.querySelector('.tab-btn[data-tab="gemini"]')?.click();
     executeGeminiQuery(prompt);
   }
@@ -203,9 +315,6 @@ async function checkPendingQuery() {
 let cachedVaultItems = [];
 let cachedHistoryItems = [];
 
-/**
- * Load and render saved Vault items
- */
 async function loadVaultItems() {
   const data = await chrome.storage.local.get(['learnflow_vault_items']);
   cachedVaultItems = data.learnflow_vault_items || [];
@@ -256,9 +365,6 @@ function filterVaultItems() {
   renderVaultList(filtered);
 }
 
-/**
- * Load and render auto-tracked history
- */
 async function loadHistoryItems() {
   const data = await chrome.storage.local.get(['learnflow_history']);
   cachedHistoryItems = data.learnflow_history || [];
@@ -319,8 +425,21 @@ async function initSettings() {
     'learnflow_preferred_rate',
     'learnflow_nav_delay',
     'learnflow_preferred_voice',
-    'gemini_api_key'
+    'gemini_api_key',
+    'obsidian_vault_folder'
   ]);
+
+  // Obsidian Folder
+  const obsidianInput = document.getElementById('setting-obsidian-folder');
+  if (obsidianInput && data.obsidian_vault_folder) {
+    obsidianInput.value = data.obsidian_vault_folder;
+  }
+
+  document.getElementById('btn-save-obsidian-folder')?.addEventListener('click', async () => {
+    const val = obsidianInput.value.trim() || 'LearnFlow_Vault';
+    await chrome.storage.local.set({ obsidian_vault_folder: val });
+    showSettingsMsg(`Obsidian/Local folder set to: ${val}`);
+  });
 
   // Gemini Settings
   const geminiInput = document.getElementById('setting-gemini-key');

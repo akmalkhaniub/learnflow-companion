@@ -1,68 +1,56 @@
-# 🎧 LearnFlow - Hands-Free Reader & Ask Gemini Companion
+# 🎧 LearnFlow - Hands-Free Reader & Ask Gemini Companion (v1.2.0)
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Gemini AI](https://img.shields.io/badge/AI-Gemini%20Nano%20%26%20Flash-purple.svg)](https://ai.google.dev/)
+[![Version](https://img.shields.io/badge/Version-1.2.0-orange.svg)](https://github.com/akmalkhaniub/learnflow-companion)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> Turn any documentation, technical book, or tutorial into a **continuous hands-free audiobook**, generate **spoken 2-minute executive briefs with Gemini**, and automatically archive complete pages (with tables, diagrams, and YouTube scripts with screenshots) directly to your **Local Vault** and **Google Drive**.
+> Turn any documentation, technical book, or tutorial into a **continuous hands-free audiobook**, generate **spoken 2-minute executive briefs with Gemini**, whisper-summarize code blocks aloud, manage a **multi-tab learning queue**, and export **Anki flashcards** while automatically archiving to your **Local Obsidian Vault** and **Google Drive**.
 
 ---
 
-## 🌟 Why LearnFlow?
+## 🌟 What's New in v1.2.0
 
-Most online technical learning materials require continuous manual clicking, scrolling, and reading through walls of text and code. Existing text-to-speech tools stumble across multi-chapter books, don't auto-navigate pages, read raw code syntax robotically, and don't preserve your learning history.
+* 💻 **Smart Code Whisperer:** Instead of robotic syntax, code blocks are automatically translated into 1 natural spoken sentence describing what the code does.
+* 📑 **Multi-Tab Playlist Queue:** Line up 5 chapters, tutorials, or YouTube videos across open tabs; LearnFlow autoplays through them in sequence like Spotify.
+* ⏱️ **Sleep & Pomodoro Timer:** Set a 15m, 25m (Pomodoro), or 45m timer that automatically stops audio and pauses auto-advance.
+* 📇 **Instant Anki Flashcards:** Automatically generates 5 high-yield active-recall flashcards from any chapter/video with 1-click `.csv` export.
+* 🔍 **Semantic Vault Search:** Ask Gemini in the Side Panel: *"Summarize the Kubernetes tutorials I studied last week"*, and it queries your saved notes.
+* 📓 **Obsidian Vault Sync:** Direct folder path configuration to save Markdown notes straight into your Obsidian Vault.
 
-**LearnFlow** solves this with a purpose-built architecture tailored for platforms like **O'Reilly Learning (Safari Books Online)**, **Google Cloud Skills Boost (`skills.google`)**, and **YouTube technical tutorials**.
+---
+
+## 🚀 Core Feature Breakdown
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        LearnFlow Core Engine                           │
+│                        LearnFlow 1.2 Architecture                      │
 ├──────────────────────────┬───────────────────────┬─────────────────────┤
 │ 1. Hands-Free Audio      │ 2. Ask Gemini AI      │ 3. Deep Archiver    │
 │ - O'Reilly next chapter  │ - 2-Min Audio Brief   │ - Preserves tables  │
-│ - Google Skills next step│ - Explain code/tables │ - Base64 figures    │
-│ - Karaoke highlighting   │ - YouTube Q&A         │ - Local + GDrive    │
+│ - Google Skills next step│ - Smart Code Whisperer│ - Base64 diagrams   │
+│ - Multi-Tab Queue        │ - Anki Flashcard Gen  │ - Local & Obsidian  │
+│ - Sleep & Pomodoro Timer │ - Semantic Vault Q&A  │ - Google Drive Sync │
 └──────────────────────────┴───────────────────────┴─────────────────────┘
 ```
 
----
-
-## 🚀 Key Features
-
 ### 1. Hands-Free Audio Reading & Auto-Navigation
-- **Native Browser Voices:** Completely offline, free, and instant audio playback using high-quality system voices (Google, Microsoft Natural, Apple) with adjustable speed ($0.8\times$ to $2.2\times$).
-- **O'Reilly Learning Platform:** 
-  - Extracts clean book text (`#sbo-rt-content`), eliminating sidebars and navigation noise.
-  - When a chapter finishes reading, **Auto-Navigator** automatically locates and clicks the next chapter button (`a[data-testid="next-link"]`), advances the page, and **resumes playback automatically**.
-- **Google Cloud Skills Boost (`skills.google`):**
-  - Isolates lab tutorial steps and auto-advances through sequential procedures.
+- **Native Browser Voices:** Completely offline, free, and instant audio playback using high-quality system voices with adjustable speed ($0.8\times$ to $2.2\times$).
+- **O'Reilly Learning Platform:** Auto-detects chapter completion, flips to the next chapter (`a[data-testid="next-link"]`), and continues reading without touching your mouse.
+- **Google Cloud Skills Boost (`skills.google`):** Automatically navigates sequential lab steps.
 - **Karaoke Highlighting:** Soft visual highlighting on the active sentence with smooth auto-scroll.
 
-### 2. "Ask Gemini" Companion (On-Device Nano + Cloud Flash)
+### 2. "Ask Gemini" Companion
 - **Omnibox Address Bar Integration:** Type `lf <your question>` in Chrome's URL bar, press `Enter`, and the Side Panel immediately opens with Gemini's contextual answer!
 - **2-Minute Executive Audio Briefs:** Click **✨** on the floating player to generate a concise, spoken executive summary tailored for listening on the go.
-- **Plain-English Code & Table Explanations:** Explains complex bash scripts, YAML files, and architecture tables in plain spoken terms.
-- **Hybrid AI Engine:**
-  - **On-Device:** Works offline with Chrome's built-in **Gemini Nano** (`window.ai`).
-  - **Cloud:** Connects to the **Gemini 2.0 / 1.5 Flash API** for deep reasoning over long chapters.
+- **Smart Code Whisperer:** Understand code without reading curly braces and commas.
+- **Hybrid AI Engine:** Works offline with Chrome's built-in **Gemini Nano** (`window.ai`), or connects to **Gemini 2.0 / 1.5 Flash API** for deep reasoning.
 
-### 3. Deep Archival (Tables, Figures, & Local/Cloud Storage)
+### 3. Deep Archival (Tables, Figures, & Multi-Cloud Storage)
 - **Tables Preserved:** Automatically converts HTML tables into clean GitHub-flavored Markdown tables.
-- **Self-Contained Illustrations:** Converts diagrams and figures into embedded **Base64 Data URLs** so your archived notes render images even when offline.
-- **Local Disk Vault:** Automatically organizes notes inside your Downloads folder:
-  ```text
-  Downloads/LearnFlow_Vault/
-  ├── OReilly/
-  │   └── [Book_Title]/
-  │       ├── Chapter_1.md
-  │       └── Chapter_2.md
-  ├── GoogleSkills/
-  │   └── [Tutorial_Title].md
-  └── YouTube/
-      └── [Video_Title].md
-  ```
-  *(Or bind directly to any custom local drive folder via the Side Panel's File System Access button).*
-- **Google Drive Sync:** Direct synchronization to a dedicated `LearnFlow Vault` folder in your Google Drive via the included 1-minute Google Apps Script webhook.
+- **Self-Contained Illustrations:** Converts diagrams and figures into embedded **Base64 Data URLs** so notes render images offline.
+- **Obsidian / Local Disk Vault:** Saves directly to `Downloads/LearnFlow_Vault/` or your configured Obsidian folder.
+- **Google Drive Sync:** Direct synchronization to a dedicated `LearnFlow Vault` folder in your Google Drive via the included Google Apps Script webhook.
 
 ### 4. YouTube Video Study Guide Generator
 - **Transcript Extraction:** Pulls video scripts with chronological timestamps.
@@ -108,23 +96,6 @@ Most online technical learning materials require continuous manual clicking, scr
    - *Who has access:* **Anyone**
 5. Copy the generated Web app URL (ends with `/exec`).
 6. Paste the URL into the **Google Apps Script Webhook URL** field in LearnFlow's Settings and click **Save**.
-
----
-
-## 🚢 Publishing to the Chrome Web Store
-
-If you plan to publish LearnFlow for other developers and students to install from the Chrome Web Store:
-
-1. **Google Developer Account:** Register at the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole) (requires a one-time \$5 registration fee).
-2. **Package the Extension:** Zip the project files (excluding `.git` and `.gitignore`):
-   ```bash
-   zip -r learnflow-extension.zip . -x "*.git*"
-   ```
-3. **Store Assets:**
-   - 128x128 store icon.
-   - At least one 1280x800 screenshot showing the in-page player and Side Panel.
-   - A short privacy policy describing that reading data is processed locally.
-4. **Permissions Justification:** Chrome requires a 1-sentence note for permissions like `downloads` ("Used to save user-requested Markdown study guides to local drive") and `storage` ("Used to store offline reading progress and settings").
 
 ---
 

@@ -1,6 +1,6 @@
 /**
  * AudioPlayer - Browser-native Text-to-Speech Engine with sentence highlighting,
- * smooth scrolling, speed controls, and auto-advance completion hooks.
+ * Smart Code Whisperer, Sleep/Pomodoro timer, speed controls, and auto-advance.
  */
 class AudioPlayer {
   constructor() {
@@ -15,10 +15,17 @@ class AudioPlayer {
     this.currentUtterance = null;
     this.keepAliveTimer = null;
 
+    // Advanced Features
+    this.codeWhispererEnabled = true;
+    this.sleepTimer = null;
+    this.sleepRemainingSeconds = 0;
+    this.sleepInterval = null;
+
     // Callbacks
     this.onStateChange = null;
     this.onProgress = null;
     this.onComplete = null;
+    this.onSleepTick = null;
 
     this._initVoices();
   }
@@ -28,7 +35,6 @@ class AudioPlayer {
       const voices = this.synth.getVoices();
       if (!voices.length) return;
 
-      // Prefer natural sounding English voices (Google, Microsoft, Natural, Siri, etc.)
       const preferred = voices.find(v => 
         (v.lang.startsWith('en')) && 
         (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Online') || v.name.includes('Neural'))
@@ -116,13 +122,46 @@ class AudioPlayer {
   setRate(newRate) {
     this.rate = Math.max(0.5, Math.min(2.5, newRate));
     if (this.isPlaying) {
-      // Re-trigger current chunk with new rate
       this.synth.cancel();
       this._speakChunk(this.currentIndex);
     }
   }
 
-  _speakChunk(index) {
+  /**
+   * Sleep / Pomodoro Timer: Stops playback after N minutes
+   * @param {number|null} minutes null cancels timer
+   */
+  setSleepTimer(minutes) {
+    if (this.sleepInterval) {
+      clearInterval(this.sleepInterval);
+      this.sleepInterval = null;
+    }
+
+    if (!minutes || minutes <= 0) {
+      this.sleepRemainingSeconds = 0;
+      if (this.onSleepTick) this.onSleepTick(0);
+      return;
+    }
+
+    this.sleepRemainingSeconds = Math.round(minutes * 60);
+
+    this.sleepInterval = setInterval(() => {
+      this.sleepRemainingSeconds--;
+      if (this.onSleepTick) {
+        this.onSleepTick(this.sleepRemainingSeconds);
+      }
+
+      if (this.sleepRemainingSeconds <= 0) {
+        clearInterval(this.sleepInterval);
+        this.sleepInterval = null;
+        console.log('[LearnFlow] Sleep timer reached. Stopping audio.');
+        this.stop();
+        if (this.onSleepTick) this.onSleepTick(0);
+      }
+    }, 1000);
+  }
+
+  async _speakChunk(index) {
     if (index >= this.chunks.length) {
       this.stop();
       if (this.onComplete) {
@@ -132,14 +171,34 @@ class AudioPlayer {
     }
 
     const chunk = this.chunks[index];
-    this.currentUtterance = new SpeechSynthesisUtterance(chunk.text);
+    let textToSpeak = chunk.text;
+
+    // Smart Code Whisperer: If code block, convert to spoken summary
+    if (chunk.type === 'code') {
+      if (!this.codeWhispererEnabled) {
+        // Skip code block if disabled
+        this.currentIndex++;
+        this._speakChunk(this.currentIndex);
+        return;
+      }
+
+      if (!chunk.spokenText) {
+        if (typeof GeminiAI !== 'undefined') {
+          chunk.spokenText = await GeminiAI.summarizeCodeBlock(chunk.text, chunk.lang);
+        } else {
+          chunk.spokenText = `Code block in ${chunk.lang || 'code'}.`;
+        }
+      }
+      textToSpeak = chunk.spokenText;
+    }
+
+    this.currentUtterance = new SpeechSynthesisUtterance(textToSpeak);
     if (this.selectedVoice) {
       this.currentUtterance.voice = this.selectedVoice;
     }
     this.currentUtterance.rate = this.rate;
     this.currentUtterance.pitch = this.pitch;
 
-    // Highlight active element and scroll smoothly into view
     this._highlightElement(chunk.element);
     this._notifyProgress();
 
@@ -150,7 +209,6 @@ class AudioPlayer {
     };
 
     this.currentUtterance.onerror = (e) => {
-      console.warn('[LearnFlow TTS Error]', e);
       if (e.error !== 'interrupted' && e.error !== 'canceled') {
         this.currentIndex++;
         this._speakChunk(this.currentIndex);
@@ -174,10 +232,6 @@ class AudioPlayer {
     });
   }
 
-  /**
-   * Chromium bug workaround: Long speech synthesis utterances can silently pause.
-   * A periodic resume() keepalive prevents audio stall.
-   */
   _startKeepAlive() {
     this._stopKeepAlive();
     this.keepAliveTimer = setInterval(() => {

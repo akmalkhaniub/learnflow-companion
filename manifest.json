@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LearnFlow - Hands-Free Reader & Ask Gemini Companion",
-  "version": "1.1.0",
-  "description": "Auto-tracks learning, listens to O'Reilly & tutorials hands-free, Ask Gemini Q&A/audio briefings, and archives to local & Google Drive.",
+  "version": "1.2.0",
+  "description": "Continuous hands-free audiobook reader, Code Whisperer, Multi-Tab Playlist Queue, Sleep Timer, Anki cards, and Ask Gemini companion for O'Reilly, Google Skills, and YouTube.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

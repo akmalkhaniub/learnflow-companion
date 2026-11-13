@@ -1,6 +1,6 @@
 /**
  * content_main.js - Orchestrates content extraction, audio playback,
- * Ask Gemini Audio Briefings, auto-advancing, and archival triggers.
+ * Ask Gemini Audio Briefings, Code Whisperer, Multi-Tab Queue, and auto-advancing.
  */
 (async function initLearnFlowContent() {
   console.log('[LearnFlow] Content script initializing on:', window.location.href);
@@ -35,10 +35,22 @@
           embedImagesAsBase64: true
         });
 
+        // Also ask Gemini to generate 3-4 Anki flashcards to append
+        let flashcardSection = '';
+        try {
+          const rawSample = extractedData.contentEl.textContent.trim().substring(0, 10000);
+          const ankiCards = await GeminiAI.generateAnkiCards(rawSample);
+          if (ankiCards && ankiCards.includes('Q:')) {
+            flashcardSection = `\n\n## 📇 Active Recall & Flashcards\n\n${ankiCards}\n\n`;
+          }
+        } catch (e) {
+          console.log('[LearnFlow] Anki generation skipped:', e);
+        }
+
         const fullMarkdown = `# ${extractedData.title}\n\n` +
           `**Source URL:** [${window.location.href}](${window.location.href})\n` +
           `**Archived At:** ${new Date().toLocaleString()}\n\n---\n\n` +
-          mdContent;
+          mdContent + flashcardSection;
 
         archivePayload = {
           title: extractedData.title,
@@ -82,9 +94,8 @@
 
       const brief = await GeminiAI.generateAudioBrief(rawText);
 
-      // Break brief into speech chunks and start reading immediately!
       const sentences = brief.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [brief];
-      const briefChunks = sentences.map(s => ({ text: s.trim(), element: null }));
+      const briefChunks = sentences.map(s => ({ type: 'text', text: s.trim(), element: null }));
 
       audioPlayer.setQueue(briefChunks);
       audioPlayer.play();
@@ -95,8 +106,24 @@
     }
   };
 
+  // Multi-Tab Playlist Queue Handler
+  const handleAddToQueue = async () => {
+    const data = await chrome.storage.local.get(['learnflow_playlist']);
+    let playlist = data.learnflow_playlist || [];
+
+    playlist.push({
+      title: document.title,
+      url: window.location.href,
+      siteType: ContentExtractor.getSiteType(),
+      addedAt: Date.now()
+    });
+
+    await chrome.storage.local.set({ learnflow_playlist: playlist });
+    if (playerUI) playerUI.showToast(`📑 Added to Playlist Queue (#${playlist.length})`);
+  };
+
   // Instantiate UI
-  const playerUI = new PlayerUI(audioPlayer, handleArchive, handleGeminiBrief);
+  const playerUI = new PlayerUI(audioPlayer, handleArchive, handleGeminiBrief, handleAddToQueue);
   playerUI.init();
 
   // If not YouTube, extract readable text chunks
@@ -104,13 +131,23 @@
     extractedData = ContentExtractor.extract();
     if (extractedData.chunks && extractedData.chunks.length > 0) {
       audioPlayer.setQueue(extractedData.chunks);
-      console.log(`[LearnFlow] Extracted ${extractedData.chunks.length} readable segments from:`, extractedData.title);
+      console.log(`[LearnFlow] Extracted ${extractedData.chunks.length} segments from:`, extractedData.title);
     }
 
     // End of chapter reached
     audioPlayer.onComplete = async () => {
       console.log('[LearnFlow] Audio reached end of section.');
       await handleArchive();
+
+      // Check if playlist queue has more tabs waiting
+      const data = await chrome.storage.local.get(['learnflow_playlist']);
+      if (data.learnflow_playlist && data.learnflow_playlist.length > 0) {
+        playerUI.showToast('Switching to next item in Playlist Queue in 2s...');
+        setTimeout(() => {
+          chrome.runtime.sendMessage({ action: 'PLAYLIST_ADVANCE' });
+        }, 2000);
+        return;
+      }
 
       if (playerUI.autoAdvance) {
         const advanced = await AutoNavigator.advanceToNext((sec) => {
@@ -137,7 +174,7 @@
     }
   });
 
-  // Check if we arrived here through Auto-Advance
+  // Check if we arrived here through Auto-Advance or Playlist Queue
   const shouldAutoResume = await AutoNavigator.checkAutoResume();
   if (shouldAutoResume) {
     console.log('[LearnFlow] Auto-resume flag detected. Starting audio playback in 1.2s...');
@@ -160,9 +197,11 @@
       handleGeminiBrief();
     } else if (message.action === 'READ_TEXT_SNIPPET') {
       if (message.text) {
-        audioPlayer.setQueue([{ text: message.text, element: null }]);
+        audioPlayer.setQueue([{ type: 'text', text: message.text, element: null }]);
         audioPlayer.play();
       }
+    } else if (message.action === 'AUTO_START_READING') {
+      audioPlayer.play();
     }
   });
 })();

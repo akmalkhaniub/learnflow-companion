@@ -22,6 +22,7 @@
   <!-- Navigation Tabs -->
   <nav class="tabs-nav">
     <button class="tab-btn active" data-tab="gemini">✨ Ask Gemini</button>
+    <button class="tab-btn" data-tab="playlist">📑 Queue (<span id="playlist-count">0</span>)</button>
     <button class="tab-btn" data-tab="vault">📁 Vault (<span id="vault-count">0</span>)</button>
     <button class="tab-btn" data-tab="history">🕒 History (<span id="history-count">0</span>)</button>
     <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
@@ -39,13 +40,15 @@
       <button class="chip-btn" id="chip-audio-brief">🎙️ 2-Min Audio Brief</button>
       <button class="chip-btn" id="chip-takeaways">📝 Key Takeaways</button>
       <button class="chip-btn" id="chip-explain-code">💡 Explain Code & Tables</button>
+      <button class="chip-btn" id="chip-anki-cards">📇 Make Anki Cards</button>
+      <button class="chip-btn" id="chip-search-vault">🔍 Search My Past Vault</button>
     </div>
 
     <!-- AI Output Box -->
     <div class="gemini-response-box" id="gemini-response-box">
       <div class="empty-state">
         <p>Ask Gemini about this tutorial, book, or video</p>
-        <span>Generate a quick spoken brief, extract takeaways, or ask specific technical questions.</span>
+        <span>Generate a quick spoken brief, create Anki flashcards, or search across your past vault.</span>
       </div>
     </div>
 
@@ -53,6 +56,7 @@
     <div class="gemini-action-bar" id="gemini-action-bar" style="display: none;">
       <button class="secondary-btn" id="btn-speak-gemini-response">▶ Listen to Answer</button>
       <button class="secondary-btn" id="btn-save-gemini-to-vault">💾 Save to Vault</button>
+      <button class="secondary-btn" id="btn-export-anki-csv" style="display: none;">📥 Export Anki (.csv)</button>
     </div>
 
     <!-- Query Input -->
@@ -62,7 +66,22 @@
     </div>
   </section>
 
-  <!-- Tab 1: Vault (Archived Books, Tutorials, YouTube Guides) -->
+  <!-- Tab 1: Multi-Tab Playlist Queue -->
+  <section class="tab-content" id="tab-playlist">
+    <div class="search-bar-row">
+      <button class="primary-btn" id="btn-play-queue-now" style="flex: 1;">▶ Start Queue Autoplay</button>
+      <button class="action-btn" id="btn-clear-playlist" title="Clear playlist">🗑️</button>
+    </div>
+
+    <div class="items-list" id="playlist-items-list">
+      <div class="empty-state">
+        <p>Your Playlist Queue is empty.</p>
+        <span>Click ➕ Queue on the floating bar on any tab to line up chapters, tutorials, and YouTube videos!</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tab 2: Vault (Archived Books, Tutorials, YouTube Guides) -->
   <section class="tab-content" id="tab-vault">
     <div class="search-bar-row">
       <input type="text" id="vault-search" class="search-input" placeholder="Search saved chapters, books, videos...">
@@ -82,7 +101,7 @@
     </div>
   </section>
 
-  <!-- Tab 2: Auto-Tracked History -->
+  <!-- Tab 3: Auto-Tracked History -->
   <section class="tab-content" id="tab-history">
     <div class="search-bar-row">
       <input type="text" id="history-search" class="search-input" placeholder="Search tracked history...">
@@ -97,7 +116,7 @@
     </div>
   </section>
 
-  <!-- Tab 3: Settings & Cloud Sync -->
+  <!-- Tab 4: Settings & Cloud Sync -->
   <section class="tab-content" id="tab-settings">
     <div class="settings-card">
       <h3>✨ Gemini AI Configuration</h3>
@@ -113,12 +132,17 @@
     </div>
 
     <div class="settings-card">
-      <h3>📁 Local Drive Storage</h3>
-      <p class="setting-desc">Files (Markdown with tables & embedded illustrations) are stored automatically in:</p>
-      <div class="code-box">Downloads/LearnFlow_Vault/[Category]/[Book]/</div>
+      <h3>📓 Obsidian & Local Storage</h3>
+      <p class="setting-desc">Save directly into your Obsidian Vault folder or local path:</p>
       
-      <div class="btn-group-row">
-        <button class="secondary-btn" id="btn-pick-local-folder">📂 Pick Custom Folder (File System Access)</button>
+      <div class="form-group">
+        <label>Folder Name / Path (inside Downloads or custom folder):</label>
+        <input type="text" id="setting-obsidian-folder" class="text-input" placeholder="LearnFlow_Vault (or Obsidian/MyVault)">
+      </div>
+      <button class="primary-btn" id="btn-save-obsidian-folder">Save Folder Path</button>
+
+      <div class="btn-group-row" style="margin-top: 10px;">
+        <button class="secondary-btn" id="btn-pick-local-folder">📂 Pick Directory (File System Access)</button>
       </div>
       <div id="custom-folder-label" class="folder-status-text">Using default Downloads folder</div>
     </div>

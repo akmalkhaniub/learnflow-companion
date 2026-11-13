@@ -1,6 +1,6 @@
 /**
  * service_worker.js - Background coordinator for LearnFlow & Ask Gemini Companion
- * Handles file downloads to local disk, Google Drive sync, Omnibox, Context Menus, and Shortcuts.
+ * Handles local disk downloads, Google Drive sync, Multi-Tab Queue Playlist, Omnibox, and Shortcuts.
  */
 
 import { GDriveSync } from '../utils/gdrive.js';
@@ -29,6 +29,12 @@ chrome.runtime.onInstalled.addListener(() => {
     title: '🎙️ Ask Gemini: 2-Min Audio Briefing of this page',
     contexts: ['page']
   });
+
+  chrome.contextMenus.create({
+    id: 'lf-add-to-queue',
+    title: '📑 Add this page to Playlist Queue',
+    contexts: ['page']
+  });
 });
 
 // Context Menu Clicks
@@ -41,7 +47,6 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       text: info.selectionText
     });
   } else if (info.menuItemId === 'lf-ask-gemini-selection') {
-    // Open side panel and query Gemini
     await chrome.sidePanel.open({ windowId: tab.windowId });
     chrome.storage.local.set({
       learnflow_pending_query: {
@@ -53,6 +58,16 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     chrome.tabs.sendMessage(tab.id, {
       action: 'TRIGGER_GEMINI_AUDIO_BRIEF'
     });
+  } else if (info.menuItemId === 'lf-add-to-queue') {
+    const data = await chrome.storage.local.get(['learnflow_playlist']);
+    const playlist = data.learnflow_playlist || [];
+    playlist.push({
+      title: tab.title,
+      url: tab.url,
+      siteType: 'generic',
+      addedAt: Date.now()
+    });
+    await chrome.storage.local.set({ learnflow_playlist: playlist });
   }
 });
 
@@ -84,20 +99,22 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
-// Sanitize string for folder / file paths
 function sanitize(name) {
   return (name || 'General').replace(/[<>:"/\\|?*]/g, '_').substring(0, 80).trim();
 }
 
 /**
- * Save Markdown document directly to local disk in a structured folder
+ * Save Markdown document directly to local disk (or custom Obsidian folder)
  */
 async function saveToLocalDisk(payload) {
+  const settings = await chrome.storage.local.get(['obsidian_vault_folder']);
+  const baseFolder = settings.obsidian_vault_folder ? sanitize(settings.obsidian_vault_folder) : 'LearnFlow_Vault';
+
   const category = sanitize(payload.category || 'General');
   const book = sanitize(payload.bookTitle || 'Tutorials');
   const chapter = sanitize(payload.chapterTitle || payload.title || 'Note');
 
-  const filename = `LearnFlow_Vault/${category}/${book}/${chapter}.md`;
+  const filename = `${baseFolder}/${category}/${book}/${chapter}.md`;
 
   const blob = new Blob([payload.markdown], { type: 'text/markdown;charset=utf-8' });
   const reader = new FileReader();
@@ -115,13 +132,40 @@ async function saveToLocalDisk(payload) {
           console.warn('[LearnFlow] Download error:', chrome.runtime.lastError);
           resolve({ success: false, error: chrome.runtime.lastError.message });
         } else {
-          console.log('[LearnFlow] Saved to local vault file:', filename, 'ID:', downloadId);
+          console.log('[LearnFlow] Saved to local file:', filename, 'ID:', downloadId);
           resolve({ success: true, downloadId, filename });
         }
       });
     };
     reader.readAsDataURL(blob);
   });
+}
+
+/**
+ * Advance Multi-Tab Playlist Queue
+ */
+async function advancePlaylist() {
+  const data = await chrome.storage.local.get(['learnflow_playlist']);
+  let playlist = data.learnflow_playlist || [];
+
+  if (!playlist.length) return;
+
+  const nextItem = playlist.shift();
+  await chrome.storage.local.set({
+    learnflow_playlist: playlist,
+    learnflow_auto_play_next: true
+  });
+
+  // Check if a tab with this URL is already open
+  const tabs = await chrome.tabs.query({ url: nextItem.url });
+  if (tabs.length > 0) {
+    const targetTab = tabs[0];
+    await chrome.tabs.update(targetTab.id, { active: true });
+    chrome.tabs.sendMessage(targetTab.id, { action: 'AUTO_START_READING' });
+  } else {
+    // Open in new active tab
+    await chrome.tabs.create({ url: nextItem.url, active: true });
+  }
 }
 
 /**
@@ -175,7 +219,7 @@ async function recordArchivedItem(payload, localResult, gdriveResult) {
   await chrome.storage.local.set({ learnflow_vault_items: items });
 }
 
-// Handle runtime messages from content script & sidepanel
+// Handle runtime messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'ARCHIVE_PAGE') {
     (async () => {
@@ -200,6 +244,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === 'LOG_PAGE_VISIT') {
     logPageVisit(message.payload);
+    sendResponse({ success: true });
+    return false;
+  }
+
+  if (message.action === 'PLAYLIST_ADVANCE') {
+    advancePlaylist();
     sendResponse({ success: true });
     return false;
   }

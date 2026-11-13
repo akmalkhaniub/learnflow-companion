@@ -1,6 +1,7 @@
 /**
  * ContentExtractor - Intelligent DOM and content isolation for O'Reilly,
  * Google Skills Boost (skills.google), YouTube, and generic documentation.
+ * Enhanced with Code Block recognition for Smart Code Whisperer.
  */
 class ContentExtractor {
   static getSiteType() {
@@ -36,7 +37,6 @@ class ContentExtractor {
   }
 
   static _extractOReilly() {
-    // Look for O'Reilly book reader content container
     const contentSelectors = [
       '#sbo-rt-content',
       '.annotator-wrapper',
@@ -55,7 +55,6 @@ class ContentExtractor {
       }
     }
 
-    // Book & Chapter title
     const bookTitleEl = document.querySelector('header [data-testid="book-title"], .header-book-title, title');
     const chapterTitleEl = document.querySelector('h1, h2, [data-testid="chapter-title"]');
 
@@ -75,7 +74,6 @@ class ContentExtractor {
   }
 
   static _extractGoogleSkills() {
-    // Look for Google Cloud Skills Boost / Qwiklabs tutorial & lab instructions
     const contentSelectors = [
       '.lab-content',
       '.lab-content__inner',
@@ -163,18 +161,38 @@ class ContentExtractor {
   }
 
   /**
-   * Breaks an element's text down into speakable sentence chunks
-   * with references back to DOM nodes for visual karaoke highlighting.
+   * Breaks an element's text down into speakable sentence chunks & code blocks
+   * with references back to DOM nodes for visual highlighting and Code Whisperer.
    */
   static _extractSentences(rootEl) {
     if (!rootEl) return [];
 
     const chunks = [];
-    const elementsToRead = rootEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote');
+    const elementsToRead = rootEl.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, pre');
 
     elementsToRead.forEach(el => {
-      // Skip empty, hidden, or script-heavy elements
-      if (el.closest('pre, code, nav, footer, header, [aria-hidden="true"], .sidebar')) {
+      if (el.closest('nav, footer, header, [aria-hidden="true"], .sidebar')) {
+        return;
+      }
+
+      // Check if it's a code block
+      if (el.tagName.toLowerCase() === 'pre') {
+        const codeText = el.textContent.trim();
+        if (codeText.length > 5) {
+          const lang = el.className.match(/lang(?:uage)?-(\w+)/)?.[1] || '';
+          chunks.push({
+            type: 'code',
+            text: codeText,
+            lang: lang,
+            element: el,
+            spokenText: null // filled dynamically by Code Whisperer
+          });
+        }
+        return;
+      }
+
+      // Skip elements that are inside pre (handled above)
+      if (el.closest('pre')) {
         return;
       }
 
@@ -188,6 +206,7 @@ class ContentExtractor {
         const cleanText = s.trim().replace(/\s+/g, ' ');
         if (cleanText.length > 2) {
           chunks.push({
+            type: 'text',
             text: cleanText,
             element: el
           });
