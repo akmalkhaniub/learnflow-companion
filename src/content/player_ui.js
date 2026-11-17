@@ -381,11 +381,17 @@ class PlayerUI {
     }, duration);
   }
 
+  applyTheme(theme) {
+    if (!this.root) return;
+    this.root.classList.toggle('lf-light', (theme || 'light') === 'light');
+  }
+
   async _loadSettings() {
     const data = await chrome.storage.local.get([
       'learnflow_preferred_rate',
       'learnflow_auto_advance_enabled',
-      'learnflow_dock_mode'
+      'learnflow_dock_mode',
+      'learnflow_theme'
     ]);
 
     if (data.learnflow_preferred_rate) {
@@ -402,8 +408,15 @@ class PlayerUI {
       if (toggle) toggle.classList.toggle('active', this.autoAdvance);
     }
 
-    // Apply saved dock mode (defaults to sleek right edge dock!)
+    // Apply saved dock mode (defaults to sleek right edge dock!) & theme (defaults to light!)
     this.applyDockMode(data.learnflow_dock_mode || 'dock-right');
+    this.applyTheme(data.learnflow_theme || 'light');
+
+    chrome.storage.onChanged.addListener((changes) => {
+      if (changes.learnflow_theme) {
+        this.applyTheme(changes.learnflow_theme.newValue || 'light');
+      }
+    });
   }
 
   _makeDraggable(element) {

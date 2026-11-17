@@ -8,8 +8,59 @@
   --lf-border: rgba(255, 255, 255, 0.14);
   --lf-text: #f8fafc;
   --lf-text-dim: #94a3b8;
+  --lf-surface: rgba(255, 255, 255, 0.08);
   --lf-highlight: rgba(254, 240, 138, 0.35);
   --lf-highlight-border: #eab308;
+}
+
+#learnflow-player-root.lf-light {
+  --lf-bg: rgba(255, 255, 255, 0.96);
+  --lf-popover-bg: #ffffff;
+  --lf-border: rgba(15, 23, 42, 0.14);
+  --lf-text: #0f172a;
+  --lf-text-dim: #475569;
+  --lf-surface: rgba(15, 23, 42, 0.06);
+}
+
+#learnflow-player-root.lf-light .learnflow-bar {
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.14);
+}
+
+#learnflow-player-root.lf-light .lf-popover {
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+}
+
+#learnflow-player-root.lf-light .learnflow-btn:hover {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+#learnflow-player-root.lf-light .lf-pop-select,
+#learnflow-player-root.lf-light .lf-chip-toggle,
+#learnflow-player-root.lf-light .lf-dock-btn,
+#learnflow-player-root.lf-light .lf-pop-action-btn {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+#learnflow-player-root.lf-light .lf-pop-select option {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+#learnflow-player-root.lf-light .lf-chip-toggle.active,
+#learnflow-player-root.lf-light .lf-dock-btn.active {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+#learnflow-player-root.lf-light .lf-mini-progress {
+  color: #2563eb;
+}
+
+#learnflow-player-root.lf-light .lf-bar-line {
+  background: #2563eb;
 }
 
 /* Karaoke-style sentence/figure highlighting */

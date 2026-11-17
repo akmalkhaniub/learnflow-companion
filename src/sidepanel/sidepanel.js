@@ -1,14 +1,20 @@
 /**
  * sidepanel.js - Interactive Side Panel controller for LearnFlow & Ask Gemini
- * Manages Gemini Q&A, Multi-Tab Queue Playlist, Anki Export, Vault items, and Settings.
+ * Supports Light/Dark Theme toggle, Gemini Q&A, Multi-Tab Queue, Vault with Show-in-Folder,
+ * exact-URL History tracking, Anki CSV export, and Settings.
  */
 
 let currentTabInfo = null;
 let lastGeminiResponse = '';
 let cachedPlaylist = [];
+let cachedVaultItems = [];
+let cachedHistoryItems = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // Tab Navigation
+  // 1. Initialize Light/Dark Theme (Defaults to Light Mode)
+  await initTheme();
+
+  // 2. Tab Navigation
   const tabButtons = document.querySelectorAll('.tab-btn');
   const tabContents = document.querySelectorAll('.tab-content');
 
@@ -27,36 +33,72 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
-  // Detect Active Browser Tab
+  // 3. Detect Active Browser Tab & Keep It Live
   await detectActiveTab();
+  chrome.tabs.onActivated?.addListener(detectActiveTab);
+  chrome.tabs.onUpdated?.addListener((tabId, changeInfo) => {
+    if (changeInfo.title || changeInfo.url || changeInfo.status === 'complete') {
+      detectActiveTab();
+    }
+  });
 
-  // Initialize Features
+  // 4. Initialize Feature Tabs
   initGeminiTab();
   initPlaylistTab();
 
-  // Load Data
+  // 5. Load Initial Data
   await loadPlaylist();
   await loadVaultItems();
   await loadHistoryItems();
   await initSettings();
 
-  // Search & Filter listeners
+  // 6. Search, Filter & Folder Listeners
   document.getElementById('vault-search')?.addEventListener('input', filterVaultItems);
   document.getElementById('vault-filter')?.addEventListener('change', filterVaultItems);
+  document.getElementById('btn-open-downloads-folder')?.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ action: 'SHOW_IN_FOLDER', downloadId: null });
+  });
   document.getElementById('history-search')?.addEventListener('input', filterHistoryItems);
   document.getElementById('btn-clear-history')?.addEventListener('click', clearHistory);
 
-  // Check for pending omnibox query or context menu action
+  // 7. Check for pending omnibox query or context menu action
   checkPendingQuery();
 
-  // Real-time storage change listener
+  // 8. Real-time storage change listener
   chrome.storage.onChanged.addListener((changes) => {
     if (changes.learnflow_vault_items) loadVaultItems();
     if (changes.learnflow_history) loadHistoryItems();
     if (changes.learnflow_playlist) loadPlaylist();
     if (changes.learnflow_pending_query) checkPendingQuery();
+    if (changes.learnflow_theme) applyTheme(changes.learnflow_theme.newValue || 'light');
   });
 });
+
+/**
+ * Light / Dark Theme Switcher (Default: Light Mode)
+ */
+async function initTheme() {
+  const data = await chrome.storage.local.get(['learnflow_theme']);
+  const theme = data.learnflow_theme || 'light';
+  applyTheme(theme);
+
+  document.getElementById('btn-theme-toggle')?.addEventListener('click', async () => {
+    const isDark = document.body.classList.contains('dark-theme');
+    const nextTheme = isDark ? 'light' : 'dark';
+    applyTheme(nextTheme);
+    await chrome.storage.local.set({ learnflow_theme: nextTheme });
+  });
+}
+
+function applyTheme(theme) {
+  const isDark = theme === 'dark';
+  document.body.classList.toggle('dark-theme', isDark);
+  const toggleBtn = document.getElementById('btn-theme-toggle');
+  if (toggleBtn) {
+    toggleBtn.textContent = isDark ? '☀️ Light' : '🌙 Dark';
+    toggleBtn.title = isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode';
+  }
+}
 
 /**
  * Detect what page user is currently viewing in Chrome
@@ -89,7 +131,6 @@ function initGeminiTab() {
   const saveBtn = document.getElementById('btn-save-gemini-to-vault');
   const exportAnkiBtn = document.getElementById('btn-export-anki-csv');
 
-  // Quick Action Chips
   document.getElementById('chip-audio-brief')?.addEventListener('click', () => {
     executeGeminiQuery('Generate a 2-minute executive spoken audio brief of this page covering the main problem and core concepts.');
   });
@@ -117,7 +158,6 @@ function initGeminiTab() {
     if (actionBar) actionBar.style.display = 'flex';
   });
 
-  // Query Submit
   sendBtn?.addEventListener('click', () => {
     const text = queryInput.value.trim();
     if (text) {
@@ -136,7 +176,6 @@ function initGeminiTab() {
     }
   });
 
-  // Speak Response with Native TTS
   speakBtn?.addEventListener('click', () => {
     if (!lastGeminiResponse) return;
     window.speechSynthesis.cancel();
@@ -144,7 +183,6 @@ function initGeminiTab() {
     window.speechSynthesis.speak(utter);
   });
 
-  // Export Anki CSV
   exportAnkiBtn?.addEventListener('click', () => {
     if (!lastGeminiResponse) return;
     const cards = [];
@@ -163,7 +201,7 @@ function initGeminiTab() {
     }
 
     if (!cards.length) {
-      alert('Could not parse Q&A format. Try asking Gemini specifically for Q: and A: flashcards.');
+      alert('Could not parse Q&A format. Try clicking "Make Anki Cards" first.');
       return;
     }
 
@@ -177,7 +215,6 @@ function initGeminiTab() {
     URL.revokeObjectURL(url);
   });
 
-  // Save Gemini Response into Vault
   saveBtn?.addEventListener('click', async () => {
     if (!lastGeminiResponse || !currentTabInfo) return;
     const title = `Gemini Notes - ${currentTabInfo.title || 'Summary'}`;
@@ -194,10 +231,11 @@ function initGeminiTab() {
         bookTitle: 'AI Summaries',
         chapterTitle: currentTabInfo.title,
         url: currentTabInfo.url,
-        markdown: md
+        markdown: md,
+        images: []
       }
     }, () => {
-      alert('✓ Saved Gemini summary to Local Vault & Google Drive!');
+      alert('✓ Saved Gemini summary to Downloads/LearnFlow_Vault/ & Google Drive!');
     });
   });
 }
@@ -236,7 +274,7 @@ async function loadPlaylist() {
     container.innerHTML = `
       <div class="empty-state">
         <p>Your Playlist Queue is empty.</p>
-        <span>Click ➕ Queue on the floating bar on any tab to line up chapters, tutorials, and YouTube videos!</span>
+        <span>Click ➕ Queue on the player bar to line up chapters, tutorials, and YouTube videos!</span>
       </div>
     `;
     return;
@@ -248,7 +286,7 @@ async function loadPlaylist() {
         <span class="item-badge">#${idx + 1} ${escapeHtml(item.siteType || 'QUEUE')}</span>
         <a href="${escapeHtml(item.url)}" target="_blank" class="item-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(item.title)}</a>
       </div>
-      <button class="action-btn btn-remove-queue-item" data-index="${idx}" title="Remove item">✕</button>
+      <button class="tiny-del-btn btn-remove-queue-item" data-index="${idx}" title="Remove item">✕</button>
     </div>
   `).join('');
 
@@ -294,13 +332,10 @@ async function executeGeminiQuery(prompt) {
     responseBox.textContent = answer;
     if (actionBar) actionBar.style.display = 'flex';
   } catch (e) {
-    responseBox.innerHTML = `<span style="color: #f87171;">Error: ${escapeHtml(e.message)}</span>`;
+    responseBox.innerHTML = `<span style="color: #dc2626;">Error: ${escapeHtml(e.message)}</span>`;
   }
 }
 
-/**
- * Check if an omnibox or context-menu query is pending
- */
 async function checkPendingQuery() {
   const data = await chrome.storage.local.get(['learnflow_pending_query']);
   if (data.learnflow_pending_query) {
@@ -312,9 +347,9 @@ async function checkPendingQuery() {
   }
 }
 
-let cachedVaultItems = [];
-let cachedHistoryItems = [];
-
+/**
+ * Vault Items (with Exact Local Path + Show-in-Folder & Open File buttons!)
+ */
 async function loadVaultItems() {
   const data = await chrome.storage.local.get(['learnflow_vault_items']);
   cachedVaultItems = data.learnflow_vault_items || [];
@@ -333,22 +368,52 @@ function renderVaultList(items) {
     container.innerHTML = `
       <div class="empty-state">
         <p>No archived content yet.</p>
-        <span>Open O'Reilly, Google Skills, or YouTube and click 💾 Archive on the floating bar!</span>
+        <span>Open O'Reilly, Google Skills, or YouTube and click 💾 Archive (or 📸 on YouTube)!</span>
       </div>
     `;
     return;
   }
 
-  container.innerHTML = items.map(item => `
-    <div class="item-card">
-      <span class="item-badge">${escapeHtml(item.category || 'NOTE')}</span>
-      <a href="${escapeHtml(item.url)}" target="_blank" class="item-title">${escapeHtml(item.title)}</a>
-      <div class="item-meta">
-        <span>💾 Local: ${escapeHtml(item.localFile ? item.localFile.split('/').pop() : 'Saved')}</span>
-        <span>${item.gdriveSynced ? '☁️ Drive' : '🕒 Pending'} • ${new Date(item.timestamp).toLocaleDateString()}</span>
+  container.innerHTML = items.map((item, idx) => {
+    const details = [];
+    if (item.transcriptCount > 0) details.push(`📝 ${item.transcriptCount} cues`);
+    if (item.imagesSaved > 0) details.push(`🖼️ ${item.imagesSaved} img`);
+    details.push(item.gdriveSynced ? '☁️ Drive' : '💾 Local');
+
+    const localDisplay = item.localFile ? `Downloads/${item.localFile}` : 'Downloads/LearnFlow_Vault/';
+
+    return `
+      <div class="item-card">
+        <div class="item-card-top">
+          <span class="item-badge">${escapeHtml(item.category || 'NOTE')}</span>
+          <span style="font-size: 10.5px; color: var(--text-muted);">${new Date(item.timestamp).toLocaleString()}</span>
+        </div>
+        <a href="${escapeHtml(item.url)}" target="_blank" class="item-title">${escapeHtml(item.title)}</a>
+        <div class="vault-path-pill" title="${escapeHtml(localDisplay)}">📁 ${escapeHtml(localDisplay)}</div>
+        <div class="item-meta">
+          <span>${details.join(' • ')}</span>
+          <div class="vault-card-actions">
+            <button class="mini-btn btn-show-folder" data-download-id="${item.downloadId || ''}" title="Highlight file in Windows Explorer">📂 Show in Folder</button>
+            ${item.downloadId ? `<button class="mini-btn btn-open-file" data-download-id="${item.downloadId}" title="Open Markdown file">📄 Open</button>` : ''}
+          </div>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
+
+  container.querySelectorAll('.btn-show-folder').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const dlId = parseInt(btn.dataset.downloadId, 10) || null;
+      chrome.runtime.sendMessage({ action: 'SHOW_IN_FOLDER', downloadId: dlId });
+    });
+  });
+
+  container.querySelectorAll('.btn-open-file').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const dlId = parseInt(btn.dataset.downloadId, 10) || null;
+      if (dlId) chrome.runtime.sendMessage({ action: 'OPEN_DOWNLOAD', downloadId: dlId });
+    });
+  });
 }
 
 function filterVaultItems() {
@@ -365,6 +430,9 @@ function filterVaultItems() {
   renderVaultList(filtered);
 }
 
+/**
+ * Exact-URL Auto-Tracked History
+ */
 async function loadHistoryItems() {
   const data = await chrome.storage.local.get(['learnflow_history']);
   cachedHistoryItems = data.learnflow_history || [];
@@ -375,6 +443,17 @@ async function loadHistoryItems() {
   renderHistoryList(cachedHistoryItems);
 }
 
+function formatReadableUrl(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    const host = u.hostname.replace(/^www\./, '');
+    const pathAndQuery = (u.pathname === '/' ? '' : u.pathname) + u.search;
+    return `${host}${pathAndQuery}`;
+  } catch {
+    return urlStr;
+  }
+}
+
 function renderHistoryList(items) {
   const container = document.getElementById('history-items-list');
   if (!container) return;
@@ -383,22 +462,35 @@ function renderHistoryList(items) {
     container.innerHTML = `
       <div class="empty-state">
         <p>No history logged yet.</p>
-        <span>Pages and tutorials you visit will automatically appear here.</span>
+        <span>Exact videos, book chapters, and tutorials you visit appear here automatically.</span>
       </div>
     `;
     return;
   }
 
-  container.innerHTML = items.map(item => `
+  container.innerHTML = items.map((item, idx) => `
     <div class="item-card">
-      <span class="item-badge">${escapeHtml(item.siteType || 'WEB')}</span>
+      <div class="item-card-top">
+        <span class="item-badge">${escapeHtml(item.siteType || 'WEB')}</span>
+        <button class="tiny-del-btn btn-del-history" data-url="${escapeHtml(item.url)}" title="Remove from history">✕</button>
+      </div>
       <a href="${escapeHtml(item.url)}" target="_blank" class="item-title">${escapeHtml(item.title)}</a>
+      <div class="item-url-preview" title="${escapeHtml(item.url)}">🔗 ${escapeHtml(formatReadableUrl(item.url))}</div>
       <div class="item-meta">
-        <span>${new URL(item.url).hostname}</span>
         <span>${formatTimeAgo(item.timestamp)}</span>
+        <a href="${escapeHtml(item.url)}" target="_blank" class="accent-link" style="font-size: 11px; font-weight: 500;">Open exact link ↗</a>
       </div>
     </div>
   `).join('');
+
+  container.querySelectorAll('.btn-del-history').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const targetUrl = btn.dataset.url;
+      const updated = cachedHistoryItems.filter(h => h.url !== targetUrl);
+      await chrome.storage.local.set({ learnflow_history: updated });
+      loadHistoryItems();
+    });
+  });
 }
 
 function filterHistoryItems() {
@@ -429,7 +521,6 @@ async function initSettings() {
     'obsidian_vault_folder'
   ]);
 
-  // Obsidian Folder
   const obsidianInput = document.getElementById('setting-obsidian-folder');
   if (obsidianInput && data.obsidian_vault_folder) {
     obsidianInput.value = data.obsidian_vault_folder;
@@ -438,10 +529,9 @@ async function initSettings() {
   document.getElementById('btn-save-obsidian-folder')?.addEventListener('click', async () => {
     const val = obsidianInput.value.trim() || 'LearnFlow_Vault';
     await chrome.storage.local.set({ obsidian_vault_folder: val });
-    showSettingsMsg(`Obsidian/Local folder set to: ${val}`);
+    showSettingsMsg(`Obsidian/Local folder set to: Downloads/${val}`);
   });
 
-  // Gemini Settings
   const geminiInput = document.getElementById('setting-gemini-key');
   if (geminiInput && data.gemini_api_key) {
     geminiInput.value = data.gemini_api_key;
@@ -453,16 +543,14 @@ async function initSettings() {
     showSettingsMsg('Gemini API Key saved!');
   });
 
-  // Check Nano availability
   const nanoStatus = document.getElementById('nano-status-label');
   const nanoAvailable = await GeminiAI.checkNanoAvailability();
   if (nanoStatus) {
     nanoStatus.textContent = nanoAvailable
       ? '✓ Chrome Built-in Gemini Nano detected and ready!'
-      : 'ℹ️ On-device Gemini Nano not active (Enter free API key above for Gemini 2.0 Flash).';
+      : 'ℹ️ On-device Gemini Nano not active (Enter free API key above for Gemini 2.0 Flash + Vision).';
   }
 
-  // Webhook
   const webhookInput = document.getElementById('setting-gdrive-webhook');
   if (webhookInput && data.gdrive_webhook_url) {
     webhookInput.value = data.gdrive_webhook_url;
@@ -474,7 +562,6 @@ async function initSettings() {
     showSettingsMsg('Google Drive settings saved!');
   });
 
-  // Copy Google Apps Script template
   document.getElementById('btn-copy-script-code')?.addEventListener('click', () => {
     const scriptCode = `// Google Apps Script to auto-save LearnFlow notes to Google Drive
 function doPost(e) {
@@ -505,13 +592,12 @@ function getOrCreateFolder(name, parent) {
     showSettingsMsg('Google Apps Script copied to clipboard!');
   });
 
-  // Voice Selection
   const voiceSelect = document.getElementById('setting-voice-select');
   const populateVoices = () => {
     const voices = window.speechSynthesis.getVoices();
     if (!voices.length || !voiceSelect) return;
 
-    voiceSelect.innerHTML = voices.map(v => 
+    voiceSelect.innerHTML = voices.map(v =>
       `<option value="${escapeHtml(v.name)}" ${v.name === data.learnflow_preferred_voice ? 'selected' : ''}>${escapeHtml(v.name)} (${v.lang})</option>`
     ).join('');
   };
@@ -523,7 +609,6 @@ function getOrCreateFolder(name, parent) {
     await chrome.storage.local.set({ learnflow_preferred_voice: e.target.value });
   });
 
-  // Speed Slider
   const speedSlider = document.getElementById('setting-speed-slider');
   const speedLabel = document.getElementById('speed-slider-label');
   if (speedSlider) {
@@ -538,7 +623,6 @@ function getOrCreateFolder(name, parent) {
     });
   }
 
-  // Delay
   const delayInput = document.getElementById('setting-nav-delay');
   if (delayInput) {
     if (data.learnflow_nav_delay) delayInput.value = data.learnflow_nav_delay;
@@ -547,7 +631,6 @@ function getOrCreateFolder(name, parent) {
     });
   }
 
-  // File System Access Picker
   document.getElementById('btn-pick-local-folder')?.addEventListener('click', async () => {
     if ('showDirectoryPicker' in window) {
       try {
@@ -564,7 +647,6 @@ function getOrCreateFolder(name, parent) {
     }
   });
 
-  // Export functions
   document.getElementById('btn-export-history')?.addEventListener('click', () => {
     exportJson(cachedHistoryItems, 'learnflow_history.json');
   });

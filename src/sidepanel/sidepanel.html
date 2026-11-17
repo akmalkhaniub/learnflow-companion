@@ -14,18 +14,18 @@
         <p class="subtitle">Hands-Free Reader & AI Companion</p>
       </div>
     </div>
-    <div class="quick-status">
-      <span class="status-indicator online" id="status-tag">Active</span>
+    <div class="header-actions">
+      <button class="theme-toggle-btn" id="btn-theme-toggle" title="Switch Light / Dark Mode">🌙 Dark</button>
     </div>
   </header>
 
   <!-- Navigation Tabs -->
   <nav class="tabs-nav">
-    <button class="tab-btn active" data-tab="gemini">✨ Ask Gemini</button>
+    <button class="tab-btn active" data-tab="gemini">✨ Gemini</button>
     <button class="tab-btn" data-tab="playlist">📑 Queue (<span id="playlist-count">0</span>)</button>
     <button class="tab-btn" data-tab="vault">📁 Vault (<span id="vault-count">0</span>)</button>
     <button class="tab-btn" data-tab="history">🕒 History (<span id="history-count">0</span>)</button>
-    <button class="tab-btn" data-tab="settings">⚙️ Settings</button>
+    <button class="tab-btn" data-tab="settings">⚙️</button>
   </nav>
 
   <!-- Tab 0: Ask Gemini -->
@@ -41,7 +41,7 @@
       <button class="chip-btn" id="chip-takeaways">📝 Key Takeaways</button>
       <button class="chip-btn" id="chip-explain-code">💡 Explain Code & Tables</button>
       <button class="chip-btn" id="chip-anki-cards">📇 Make Anki Cards</button>
-      <button class="chip-btn" id="chip-search-vault">🔍 Search My Past Vault</button>
+      <button class="chip-btn" id="chip-search-vault">🔍 Search Past Vault</button>
     </div>
 
     <!-- AI Output Box -->
@@ -54,14 +54,14 @@
 
     <!-- Action bar below response -->
     <div class="gemini-action-bar" id="gemini-action-bar" style="display: none;">
-      <button class="secondary-btn" id="btn-speak-gemini-response">▶ Listen to Answer</button>
+      <button class="secondary-btn" id="btn-speak-gemini-response">▶ Listen</button>
       <button class="secondary-btn" id="btn-save-gemini-to-vault">💾 Save to Vault</button>
-      <button class="secondary-btn" id="btn-export-anki-csv" style="display: none;">📥 Export Anki (.csv)</button>
+      <button class="secondary-btn" id="btn-export-anki-csv" style="display: none;">📥 Anki (.csv)</button>
     </div>
 
     <!-- Query Input -->
     <div class="gemini-input-row">
-      <input type="text" id="gemini-user-prompt" class="search-input" placeholder="Ask Gemini about this page or video (or type 'lf' in URL bar)...">
+      <input type="text" id="gemini-user-prompt" class="search-input" placeholder="Ask Gemini about this page or video...">
       <button class="primary-btn" id="btn-send-gemini-query">Ask</button>
     </div>
   </section>
@@ -76,7 +76,7 @@
     <div class="items-list" id="playlist-items-list">
       <div class="empty-state">
         <p>Your Playlist Queue is empty.</p>
-        <span>Click ➕ Queue on the floating bar on any tab to line up chapters, tutorials, and YouTube videos!</span>
+        <span>Click ➕ Queue on the player bar to line up chapters, tutorials, and YouTube videos!</span>
       </div>
     </div>
   </section>
@@ -91,12 +91,13 @@
         <option value="GoogleSkills">Google Skills</option>
         <option value="YouTube">YouTube</option>
       </select>
+      <button class="action-btn" id="btn-open-downloads-folder" title="Open Downloads Folder">📂</button>
     </div>
 
     <div class="items-list" id="vault-items-list">
       <div class="empty-state">
         <p>No archived content yet.</p>
-        <span>Open O'Reilly, Google Skills, or YouTube and click 💾 Archive on the floating bar!</span>
+        <span>Open O'Reilly, Google Skills, or YouTube and click 💾 Archive (or 📸 on YouTube)!</span>
       </div>
     </div>
   </section>
@@ -104,14 +105,14 @@
   <!-- Tab 3: Auto-Tracked History -->
   <section class="tab-content" id="tab-history">
     <div class="search-bar-row">
-      <input type="text" id="history-search" class="search-input" placeholder="Search tracked history...">
+      <input type="text" id="history-search" class="search-input" placeholder="Search exact visited pages & videos...">
       <button class="action-btn" id="btn-clear-history" title="Clear history">🗑️</button>
     </div>
 
     <div class="items-list" id="history-items-list">
       <div class="empty-state">
         <p>No history logged yet.</p>
-        <span>Pages and videos you visit will be logged here automatically.</span>
+        <span>Exact videos, book chapters, and tutorials you visit appear here automatically.</span>
       </div>
     </div>
   </section>
@@ -120,12 +121,12 @@
   <section class="tab-content" id="tab-settings">
     <div class="settings-card">
       <h3>✨ Gemini AI Configuration</h3>
-      <p class="setting-desc">Supports on-device <b>Gemini Nano</b> (built into Chrome) or the <b>Gemini 2.0 / 1.5 Flash API</b> (Free tier).</p>
+      <p class="setting-desc">Supports on-device <b>Gemini Nano</b> (built into Chrome) or the <b>Gemini 2.0 Flash API</b> (Free tier, also enables Figure Vision narration!).</p>
       
       <div class="form-group">
-        <label>Google Gemini API Key (Optional if Chrome Gemini Nano is enabled):</label>
+        <label>Google Gemini API Key:</label>
         <input type="password" id="setting-gemini-key" class="text-input" placeholder="AIzaSy...">
-        <span class="folder-status-text">Get a free key from <a href="https://aistudio.google.com" target="_blank" style="color: #60a5fa;">Google AI Studio</a></span>
+        <span class="folder-status-text">Get a free key from <a href="https://aistudio.google.com" target="_blank" class="accent-link">Google AI Studio</a></span>
       </div>
       <button class="primary-btn" id="btn-save-gemini-key">Save Gemini Key</button>
       <div id="nano-status-label" class="status-msg" style="margin-top: 8px;"></div>
@@ -133,18 +134,18 @@
 
     <div class="settings-card">
       <h3>📓 Obsidian & Local Storage</h3>
-      <p class="setting-desc">Save directly into your Obsidian Vault folder or local path:</p>
+      <p class="setting-desc">Clean Markdown notes + separate <code>images/</code> figures save inside:</p>
+      <div class="code-box">Downloads/LearnFlow_Vault/[Category]/[Book]/</div>
       
       <div class="form-group">
-        <label>Folder Name / Path (inside Downloads or custom folder):</label>
+        <label>Custom Folder Name (inside Downloads):</label>
         <input type="text" id="setting-obsidian-folder" class="text-input" placeholder="LearnFlow_Vault (or Obsidian/MyVault)">
       </div>
-      <button class="primary-btn" id="btn-save-obsidian-folder">Save Folder Path</button>
-
-      <div class="btn-group-row" style="margin-top: 10px;">
-        <button class="secondary-btn" id="btn-pick-local-folder">📂 Pick Directory (File System Access)</button>
+      <div class="btn-group-row">
+        <button class="primary-btn" id="btn-save-obsidian-folder">Save Path</button>
+        <button class="secondary-btn" id="btn-pick-local-folder">📂 Pick Directory</button>
       </div>
-      <div id="custom-folder-label" class="folder-status-text">Using default Downloads folder</div>
+      <div id="custom-folder-label" class="folder-status-text">Using Downloads/LearnFlow_Vault/</div>
     </div>
 
     <div class="settings-card">
@@ -156,9 +157,9 @@
         <input type="url" id="setting-gdrive-webhook" class="text-input" placeholder="https://script.google.com/macros/s/.../exec">
       </div>
 
-      <div class="form-group">
-        <button class="primary-btn" id="btn-save-gdrive-settings">Save Webhook URL</button>
-        <button class="secondary-btn" id="btn-copy-script-code" title="Copy 15-line Google Apps Script to paste into script.google.com">📋 Copy Apps Script Code</button>
+      <div class="btn-group-row">
+        <button class="primary-btn" id="btn-save-gdrive-settings">Save Webhook</button>
+        <button class="secondary-btn" id="btn-copy-script-code" title="Copy Google Apps Script code">📋 Copy Script</button>
       </div>
       <div id="gdrive-status-msg" class="status-msg"></div>
     </div>
@@ -171,9 +172,8 @@
       </div>
 
       <div class="form-group">
-        <label>Default Speed Rate:</label>
-        <input type="range" id="setting-speed-slider" min="0.8" max="2.2" step="0.1" value="1.0">
-        <span id="speed-slider-label">1.0x</span>
+        <label>Default Speed Rate: <b id="speed-slider-label">1.0x</b></label>
+        <input type="range" id="setting-speed-slider" min="0.8" max="2.2" step="0.1" value="1.0" style="width: 100%;">
       </div>
 
       <div class="form-group">
@@ -186,7 +186,7 @@
       <h3>📤 Export & Backup</h3>
       <div class="btn-group-row">
         <button class="secondary-btn" id="btn-export-history">Export History (JSON)</button>
-        <button class="secondary-btn" id="btn-export-vault">Export Vault Index (JSON)</button>
+        <button class="secondary-btn" id="btn-export-vault">Export Vault (JSON)</button>
       </div>
     </div>
   </section>

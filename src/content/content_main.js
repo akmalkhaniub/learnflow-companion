@@ -1,7 +1,7 @@
 /**
  * content_main.js - Orchestrates dynamic content extraction (SPA-aware),
  * audio playback with Figure/Code/Table narration, Alt+Click jump-to-read,
- * Ask Gemini Briefings, Multi-Tab Queue, and clean archival (separate image files).
+ * YouTube SPA tracking + transcript/screenshot archiving, Ask Gemini Briefings, and Multi-Tab Queue.
  */
 (async function initLearnFlowContent() {
   console.log('[LearnFlow] Content script initializing on:', window.location.href);
@@ -14,7 +14,7 @@
    * Ensure fresh extraction of the main reading area (critical for O'Reilly/skills.google SPAs!)
    */
   const ensureFreshExtraction = (force = false) => {
-    if (YouTubeHandler.isYouTube()) return null;
+    if (YouTubeHandler.isYouTubeHost()) return null;
 
     if (force || !extractedData || lastExtractedUrl !== window.location.href || !extractedData.chunks?.length) {
       extractedData = ContentExtractor.extract();
@@ -27,7 +27,7 @@
     return extractedData;
   };
 
-  // Play handler: re-extracts if URL changed or DOM finished loading after initial script injection
+  // Play handler
   const handlePlay = () => {
     if (audioPlayer.isPaused && lastExtractedUrl === window.location.href) {
       audioPlayer.play();
@@ -44,7 +44,18 @@
   // Archival function: clean Markdown + separate image files (ZERO inline base64 gibberish!)
   const handleArchive = async () => {
     try {
-      if (playerUI) playerUI.showToast('Archiving clean Markdown + figures...');
+      if (YouTubeHandler.isYouTubeHost() && !YouTubeHandler.isYouTube()) {
+        if (playerUI) playerUI.showToast('Open a YouTube video first to save its transcript!');
+        return;
+      }
+
+      if (playerUI) {
+        playerUI.showToast(
+          YouTubeHandler.isYouTube()
+            ? 'Fetching YouTube transcript & video screenshot...'
+            : 'Archiving clean Markdown + figures...'
+        );
+      }
 
       let archivePayload = null;
 
@@ -56,13 +67,13 @@
           bookTitle: ytData.channel,
           chapterTitle: ytData.title,
           url: ytData.url,
+          transcriptCount: ytData.transcriptCount,
           markdown: ytData.markdown,
           images: ytData.images || []
         };
       } else {
         const data = ensureFreshExtraction(true);
 
-        // Short unique prefix per chapter so figures don't collide in images/
         const chapterSlug = (data.chapterTitle || 'ch')
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, '_')
@@ -108,16 +119,24 @@
         payload: archivePayload
       }, (response) => {
         if (response && response.success) {
-          const imgCount = archivePayload.images?.length || 0;
-          const imgNote = imgCount > 0 ? ` + ${imgCount} figure${imgCount > 1 ? 's' : ''}` : '';
-          if (playerUI) playerUI.showToast(`✓ Saved Markdown${imgNote}!`);
+          if (YouTubeHandler.isYouTube()) {
+            const cueMsg = archivePayload.transcriptCount > 0
+              ? `${archivePayload.transcriptCount} transcript cues`
+              : 'no captions found';
+            const savedPath = response.local?.filename || 'Downloads/LearnFlow_Vault/YouTube/';
+            if (playerUI) playerUI.showToast(`✓ Saved (${cueMsg}) -> ${savedPath}`, 4500);
+          } else {
+            const imgCount = archivePayload.images?.length || 0;
+            const imgNote = imgCount > 0 ? ` + ${imgCount} figure${imgCount > 1 ? 's' : ''}` : '';
+            if (playerUI) playerUI.showToast(`✓ Saved Markdown${imgNote} in Downloads/LearnFlow_Vault/`, 3800);
+          }
         } else {
-          if (playerUI) playerUI.showToast('Saved locally (' + (response?.error || 'ready') + ')');
+          if (playerUI) playerUI.showToast('Save error: ' + (response?.error || 'Check downloads permissions'), 4000);
         }
       });
     } catch (err) {
       console.error('[LearnFlow] Archive error:', err);
-      if (playerUI) playerUI.showToast('Archive error: ' + err.message);
+      if (playerUI) playerUI.showToast('Archive error: ' + err.message, 4000);
     }
   };
 
@@ -154,15 +173,44 @@
     const data = await chrome.storage.local.get(['learnflow_playlist']);
     let playlist = data.learnflow_playlist || [];
 
+    const meta = YouTubeHandler.isYouTube() ? YouTubeHandler.getVideoMetadata() : null;
     playlist.push({
-      title: document.title,
-      url: window.location.href,
+      title: meta ? meta.title : document.title,
+      url: meta ? meta.url : window.location.href,
       siteType: ContentExtractor.getSiteType(),
       addedAt: Date.now()
     });
 
     await chrome.storage.local.set({ learnflow_playlist: playlist });
     if (playerUI) playerUI.showToast(`📑 Added to Playlist Queue (#${playlist.length})`);
+  };
+
+  // Log exact page or YouTube video visit
+  const reportCurrentVisit = () => {
+    if (YouTubeHandler.isYouTubeHost()) {
+      if (!YouTubeHandler.isYouTube()) return; // Skip YouTube homepage
+      const meta = YouTubeHandler.getVideoMetadata();
+      if (!meta.videoId || meta.title.toLowerCase() === 'youtube') return;
+      chrome.runtime.sendMessage({
+        action: 'LOG_PAGE_VISIT',
+        payload: {
+          title: `${meta.title} — ${meta.channel}`,
+          url: meta.url,
+          siteType: 'youtube',
+          timestamp: Date.now()
+        }
+      });
+    } else {
+      chrome.runtime.sendMessage({
+        action: 'LOG_PAGE_VISIT',
+        payload: {
+          title: document.title,
+          url: window.location.href,
+          siteType: ContentExtractor.getSiteType(),
+          timestamp: Date.now()
+        }
+      });
+    }
   };
 
   // Instantiate Compact Dockable UI
@@ -176,7 +224,7 @@
 
   // Alt + Click on any paragraph/heading/figure to jump right there and start reading!
   document.addEventListener('click', (e) => {
-    if (!e.altKey || YouTubeHandler.isYouTube()) return;
+    if (!e.altKey || YouTubeHandler.isYouTubeHost()) return;
     if (e.target.closest('#learnflow-player-root')) return;
 
     const targetBlock = e.target.closest('p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, figure, table');
@@ -192,13 +240,12 @@
     }
   });
 
-  // Initial extraction (delayed slightly for SPA hydration on O'Reilly / skills.google)
-  if (!YouTubeHandler.isYouTube()) {
+  // Initial extraction (delayed slightly for SPA hydration)
+  if (!YouTubeHandler.isYouTubeHost()) {
     setTimeout(() => {
       ensureFreshExtraction(false);
     }, 900);
 
-    // End of chapter reached
     audioPlayer.onComplete = async () => {
       console.log('[LearnFlow] Audio reached end of section.');
       await handleArchive();
@@ -226,7 +273,22 @@
     };
   }
 
-  // Watch for SPA URL navigation (O'Reilly & skills.google switch chapters without page reload!)
+  // Listen for YouTube's native SPA navigation event so exact video URL & title are ALWAYS captured!
+  window.addEventListener('yt-navigate-finish', () => {
+    setTimeout(reportCurrentVisit, 1400);
+  });
+
+  // Periodically save YouTube playback timestamp (every 30s while watching) so history links resume at exact spot!
+  if (YouTubeHandler.isYouTubeHost()) {
+    setInterval(() => {
+      const video = document.querySelector('video');
+      if (YouTubeHandler.isYouTube() && video && !video.paused && video.currentTime > 5) {
+        reportCurrentVisit();
+      }
+    }, 30000);
+  }
+
+  // Watch for SPA URL navigation on O'Reilly / skills.google / YouTube
   let currentUrl = window.location.href;
   setInterval(async () => {
     if (window.location.href !== currentUrl) {
@@ -235,20 +297,12 @@
       lastExtractedUrl = null;
       audioPlayer.stop();
 
-      chrome.runtime.sendMessage({
-        action: 'LOG_PAGE_VISIT',
-        payload: {
-          title: document.title,
-          url: currentUrl,
-          siteType: ContentExtractor.getSiteType(),
-          timestamp: Date.now()
-        }
-      });
+      setTimeout(reportCurrentVisit, 1500);
 
       const shouldResume = await AutoNavigator.checkAutoResume();
       setTimeout(() => {
         ensureFreshExtraction(true);
-        if (shouldResume && !YouTubeHandler.isYouTube()) {
+        if (shouldResume && !YouTubeHandler.isYouTubeHost()) {
           playerUI.showToast('Auto-playing next chapter...');
           audioPlayer.play();
         }
@@ -256,20 +310,12 @@
     }
   }, 1500);
 
-  // Log initial visit
-  chrome.runtime.sendMessage({
-    action: 'LOG_PAGE_VISIT',
-    payload: {
-      title: document.title,
-      url: window.location.href,
-      siteType: ContentExtractor.getSiteType(),
-      timestamp: Date.now()
-    }
-  });
+  // Log initial visit (wait 1.2s so YouTube/SPA real title has mounted)
+  setTimeout(reportCurrentVisit, 1200);
 
   // Check if we arrived here through full-page Auto-Advance
   const shouldAutoResume = await AutoNavigator.checkAutoResume();
-  if (shouldAutoResume && !YouTubeHandler.isYouTube()) {
+  if (shouldAutoResume && !YouTubeHandler.isYouTubeHost()) {
     setTimeout(() => {
       ensureFreshExtraction(true);
       playerUI.showToast('Auto-playing next chapter...');

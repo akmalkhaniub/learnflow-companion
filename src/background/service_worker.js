@@ -1,7 +1,7 @@
 /**
  * service_worker.js - Background coordinator for LearnFlow & Ask Gemini Companion
- * Handles clean local disk downloads (Markdown + separate images/ folder),
- * Google Drive sync, Multi-Tab Queue Playlist, Omnibox, and Shortcuts.
+ * Handles local disk downloads (Markdown + images/ folder), Show-in-Folder,
+ * exact-URL tab history tracking (YouTube SPA & O'Reilly SPA), Google Drive sync, and Playlist Queue.
  */
 
 import { GDriveSync } from '../utils/gdrive.js';
@@ -67,7 +67,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     playlist.push({
       title: tab.title,
       url: tab.url,
-      siteType: 'generic',
+      siteType: detectSiteTypeFromUrl(tab.url),
       addedAt: Date.now()
     });
     await chrome.storage.local.set({ learnflow_playlist: playlist });
@@ -102,14 +102,45 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
-function sanitize(name, maxLen = 70) {
-  return (name || 'General')
-    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+// Track exact tab URLs & titles automatically (catches YouTube SPA & O'Reilly SPA transitions reliably!)
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (!tab?.url || !tab.url.startsWith('http')) return;
+  if (changeInfo.status === 'complete' || changeInfo.title) {
+    const cleanTitle = (tab.title || '').replace(/^\(\d+\)\s*/, '').trim();
+    // Skip placeholder title "YouTube" while SPA video title is still loading
+    if (tab.url.includes('youtube.com/watch') && (!cleanTitle || cleanTitle.toLowerCase() === 'youtube')) {
+      return;
+    }
+    logPageVisit({
+      title: cleanTitle,
+      url: tab.url,
+      siteType: detectSiteTypeFromUrl(tab.url),
+      timestamp: Date.now()
+    });
+  }
+});
+
+function detectSiteTypeFromUrl(url) {
+  if (!url) return 'generic';
+  if (url.includes('oreilly.com')) return 'oreilly';
+  if (url.includes('skills.google') || url.includes('cloudskillsboost.google')) return 'google_skills';
+  if (url.includes('youtube.com')) return 'youtube';
+  return 'generic';
+}
+
+/**
+ * Windows/Chrome-safe filename sanitizer (removes emojis, invalid chars, leading/trailing dots)
+ */
+function sanitize(name, maxLen = 65) {
+  const cleaned = (name || 'General')
+    // Strip non-ASCII / emojis that can break Chrome Downloads API path validation on Windows
+    .replace(/[^\x20-\x7E]/g, '')
+    .replace(/[<>:"/\\|?*]/g, '_')
     .replace(/\s+/g, ' ')
-    .replace(/^\.+|\.+$/g, '')
-    .trim()
+    .replace(/^[\s._-]+|[\s._-]+$/g, '')
     .substring(0, maxLen)
-    .trim() || 'Document';
+    .replace(/^[\s._-]+|[\s._-]+$/g, '');
+  return cleaned || 'Document';
 }
 
 function downloadFile(url, filename) {
@@ -132,18 +163,15 @@ function downloadFile(url, filename) {
 
 /**
  * Save clean Markdown document + separate image assets into a structured local folder
- * Example:
- *   Downloads/LearnFlow_Vault/OReilly/AI Agents in Action/4 Architecting multi-agent systems.md
- *   Downloads/LearnFlow_Vault/OReilly/AI Agents in Action/images/4_architecting_fig_1.png
  */
 async function saveToLocalDisk(payload) {
   const settings = await chrome.storage.local.get(['obsidian_vault_folder']);
   const rawBase = (settings.obsidian_vault_folder || 'LearnFlow_Vault').replace(/^\/+|\/+$/g, '');
-  const baseFolder = rawBase.split('/').map(p => sanitize(p, 50)).join('/');
+  const baseFolder = rawBase.split('/').map(p => sanitize(p, 45)).filter(Boolean).join('/') || 'LearnFlow_Vault';
 
-  const category = sanitize(payload.category || 'General', 40);
-  const book = sanitize(payload.bookTitle || 'Tutorials', 65);
-  const chapter = sanitize(payload.chapterTitle || payload.title || 'Note', 65);
+  const category = sanitize(payload.category || 'General', 35);
+  const book = sanitize(payload.bookTitle || 'Tutorials', 55);
+  const chapter = sanitize(payload.chapterTitle || payload.title || 'Note', 55);
 
   const folderPrefix = `${baseFolder}/${category}/${book}`;
   const mdFilename = `${folderPrefix}/${chapter}.md`;
@@ -152,12 +180,12 @@ async function saveToLocalDisk(payload) {
   const mdDataUrl = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(payload.markdown || '');
   const mdResult = await downloadFile(mdDataUrl, mdFilename);
 
-  // 2. Save extracted figure/diagram images into images/ subfolder
+  // 2. Save extracted figure/diagram/screenshot images into images/ subfolder
   const savedImages = [];
   if (Array.isArray(payload.images) && payload.images.length > 0) {
     for (const img of payload.images) {
       if (!img?.dataUrl || !img?.filename) continue;
-      const safeImgName = sanitize(img.filename, 60);
+      const safeImgName = sanitize(img.filename, 55);
       const imgPath = `${folderPrefix}/images/${safeImgName}`;
       const imgRes = await downloadFile(img.dataUrl, imgPath);
       if (imgRes.success) {
@@ -198,21 +226,66 @@ async function advancePlaylist() {
 }
 
 /**
- * Log page visit into history
+ * Extract canonical key for deduplicating exact URLs (e.g. YouTube videoId)
+ */
+function getHistoryKey(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    if (u.hostname.includes('youtube.com')) {
+      const vid = u.searchParams.get('v');
+      if (vid) return `yt:${vid}`;
+    }
+    // Strip hash fragments for normal articles/chapters
+    return `${u.origin}${u.pathname}${u.search}`;
+  } catch {
+    return urlStr;
+  }
+}
+
+/**
+ * Determine whether a URL is a real content page vs noisy homepage/search clutter
+ */
+function isTrackableUrl(urlStr) {
+  if (!urlStr || !urlStr.startsWith('http')) return false;
+  try {
+    const u = new URL(urlStr);
+    // Ignore search engines & blank utility pages
+    if (u.hostname.includes('google.com') && u.pathname.startsWith('/search')) return false;
+    // On YouTube, ONLY track actual videos, shorts, or playlists (NOT bare youtube.com/ homepage!)
+    if (u.hostname.includes('youtube.com')) {
+      const isVideo = u.pathname === '/watch' && u.searchParams.has('v');
+      const isShort = u.pathname.startsWith('/shorts/');
+      const isPlaylist = u.pathname === '/playlist' && u.searchParams.has('list');
+      return isVideo || isShort || isPlaylist;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Log exact page/video visit into history (with YouTube videoId deduplication & timestamp retention)
  */
 async function logPageVisit(payload) {
+  if (!isTrackableUrl(payload.url)) return;
+
+  const cleanTitle = (payload.title || '').replace(/^\(\d+\)\s*/, '').replace(/\s*-\s*YouTube$/i, '').trim();
+  if (!cleanTitle || cleanTitle.toLowerCase() === 'youtube') return;
+
   const data = await chrome.storage.local.get(['learnflow_history']);
   let history = data.learnflow_history || [];
 
-  if (!payload.url || payload.url.startsWith('chrome://') || payload.url.includes('google.com/search')) {
-    return;
-  }
+  // Also clean out any legacy bare youtube.com/ entries
+  history = history.filter(item => isTrackableUrl(item.url));
 
-  history = history.filter(item => item.url !== payload.url);
+  const newKey = getHistoryKey(payload.url);
+  history = history.filter(item => getHistoryKey(item.url) !== newKey);
+
   history.unshift({
-    title: payload.title || 'Untitled',
+    title: cleanTitle,
     url: payload.url,
-    siteType: payload.siteType || 'generic',
+    siteType: payload.siteType || detectSiteTypeFromUrl(payload.url),
     timestamp: payload.timestamp || Date.now()
   });
 
@@ -224,7 +297,7 @@ async function logPageVisit(payload) {
 }
 
 /**
- * Save item into vault index
+ * Save item into vault index (stores downloadId so user can click "Show in Folder"!)
  */
 async function recordArchivedItem(payload, localResult, gdriveResult) {
   const data = await chrome.storage.local.get(['learnflow_vault_items']);
@@ -237,8 +310,10 @@ async function recordArchivedItem(payload, localResult, gdriveResult) {
     chapterTitle: payload.chapterTitle,
     url: payload.url,
     timestamp: Date.now(),
+    downloadId: localResult?.downloadId || null,
     localFile: localResult?.filename || null,
     imagesSaved: localResult?.imagesSaved || 0,
+    transcriptCount: payload.transcriptCount || 0,
     gdriveSynced: !!gdriveResult?.success
   });
 
@@ -260,9 +335,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await recordArchivedItem(payload, localResult, gdriveResult);
 
         sendResponse({
-          success: true,
+          success: localResult.success,
           local: localResult,
-          gdrive: gdriveResult
+          gdrive: gdriveResult,
+          error: localResult.error || null
         });
       } catch (err) {
         console.error('[LearnFlow] Archival failed:', err);
@@ -274,6 +350,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.action === 'LOG_PAGE_VISIT') {
     logPageVisit(message.payload);
+    sendResponse({ success: true });
+    return false;
+  }
+
+  if (message.action === 'SHOW_IN_FOLDER') {
+    if (message.downloadId) {
+      chrome.downloads.show(message.downloadId);
+    } else {
+      chrome.downloads.showDefaultFolder();
+    }
+    sendResponse({ success: true });
+    return false;
+  }
+
+  if (message.action === 'OPEN_DOWNLOAD') {
+    if (message.downloadId) {
+      chrome.downloads.open(message.downloadId);
+    }
     sendResponse({ success: true });
     return false;
   }
