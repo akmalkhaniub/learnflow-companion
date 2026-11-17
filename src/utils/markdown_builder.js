@@ -1,30 +1,103 @@
 /**
- * MarkdownBuilder - Converts HTML DOM elements into clean, portable Markdown
- * with full support for tables, figures, code blocks, and base64 embedded images.
+ * MarkdownBuilder - Converts HTML DOM elements into clean, human-readable Markdown
+ * with separate image asset extraction (no inline base64 gibberish), clean tables,
+ * sanitized formatting, and authenticated O'Reilly image capture.
  */
 class MarkdownBuilder {
   /**
-   * Convert an HTML element into GitHub-flavored Markdown
-   * @param {HTMLElement} rootElement 
-   * @param {Object} options 
-   * @returns {Promise<string>}
+   * Convert an HTML element into clean GitHub-flavored Markdown + extracted image files
+   * @param {HTMLElement} rootElement
+   * @param {Object} options { extractImages: boolean, imagePrefix: string }
+   * @returns {Promise<{ markdown: string, images: Array<{ filename: string, dataUrl: string, alt: string }> }>}
    */
-  static async elementToMarkdown(rootElement, options = { embedImagesAsBase64: true }) {
-    if (!rootElement) return '';
-    const clone = rootElement.cloneNode(true);
+  static async elementToMarkdownWithAssets(rootElement, options = {}) {
+    const opts = {
+      extractImages: true,
+      imagePrefix: 'fig_',
+      ...options
+    };
 
-    // Remove hidden elements, scripts, styles, buttons, navs
-    const removeSelectors = ['script', 'style', 'noscript', 'nav', 'footer', 'iframe', '.ad', '.ads', '[aria-hidden="true"]'];
-    removeSelectors.forEach(sel => {
-      clone.querySelectorAll(sel).forEach(el => el.remove());
+    if (!rootElement) {
+      return { markdown: '', images: [] };
+    }
+
+    // Build a map of live <img> elements by src so we can read loaded pixels via canvas if fetch is blocked
+    const liveImgMap = new Map();
+    rootElement.querySelectorAll('img').forEach(img => {
+      if (img.src) liveImgMap.set(img.src, img);
+      const rawSrc = img.getAttribute('src');
+      if (rawSrc) liveImgMap.set(rawSrc, img);
     });
 
-    return await this._processNode(clone, options);
+    const clone = rootElement.cloneNode(true);
+
+    // Aggressively remove UI chrome, sidebars, TOCs, buttons, and our own widget
+    const removeSelectors = [
+      'script', 'style', 'noscript', 'nav', 'footer', 'aside', 'iframe',
+      'button', 'input', 'select', 'textarea',
+      '#learnflow-player-root',
+      '[role="navigation"]', '[role="complementary"]', '[role="banner"]',
+      '[role="search"]', '[role="dialog"]', '[role="menu"]', '[role="toolbar"]',
+      '[aria-hidden="true"]',
+      '[class*="sidebar" i]', '[class*="toc" i]', '[class*="drawer" i]',
+      '[data-testid*="toc" i]', '[data-testid*="sidebar" i]',
+      '[class*="copy-button" i]', '[class*="copyButton" i]',
+      '.ad', '.ads', '.sr-only', '.visually-hidden'
+    ];
+
+    removeSelectors.forEach(sel => {
+      try {
+        clone.querySelectorAll(sel).forEach(el => el.remove());
+      } catch {
+        // Ignore unsupported selector syntax
+      }
+    });
+
+    const state = {
+      images: [],
+      imgCounter: 0,
+      liveImgMap,
+      opts
+    };
+
+    const rawMd = await this._processNode(clone, state);
+    const cleanedMd = this._cleanupMarkdown(rawMd);
+
+    return {
+      markdown: cleanedMd,
+      images: state.images
+    };
   }
 
-  static async _processNode(node, options) {
+  /**
+   * Backward-compatible helper returning only Markdown string
+   */
+  static async elementToMarkdown(rootElement, options = {}) {
+    const res = await this.elementToMarkdownWithAssets(rootElement, options);
+    return res.markdown;
+  }
+
+  static _cleanText(text) {
+    return (text || '')
+      .replace(/[\u00AD\u200B\u200C\u200D\uFEFF]/g, '') // Strip invisible soft hyphens & zero-width chars
+      .replace(/\u00A0/g, ' ') // Non-breaking spaces -> normal space
+      .replace(/\s+/g, ' ');
+  }
+
+  static _cleanupMarkdown(md) {
+    return (md || '')
+      .replace(/[\u00AD\u200B\u200C\u200D\uFEFF]/g, '')
+      // Fix accidental broken emphasis like *word**s* or **word*s**
+      .replace(/\*{4,}/g, '**')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+\n/g, '\n\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  static async _processNode(node, state) {
     if (node.nodeType === Node.TEXT_NODE) {
-      return node.textContent.replace(/\s+/g, ' ');
+      return this._cleanText(node.textContent);
     }
 
     if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -35,71 +108,89 @@ class MarkdownBuilder {
 
     // Table conversion
     if (tagName === 'table') {
-      return this._tableToMarkdown(node) + '\n\n';
+      return '\n\n' + this._tableToMarkdown(node) + '\n\n';
     }
 
-    // Image & Figure conversion
+    // Image conversion
     if (tagName === 'img') {
-      return await this._imgToMarkdown(node, options) + '\n\n';
+      return await this._imgToMarkdown(node, state);
     }
 
+    // Figure container
     if (tagName === 'figure') {
       const img = node.querySelector('img');
-      const caption = node.querySelector('figcaption')?.textContent?.trim() || '';
-      let md = '';
+      const captionEl = node.querySelector('figcaption');
+      const caption = captionEl ? this._cleanText(captionEl.textContent).trim() : '';
+      let md = '\n\n';
       if (img) {
-        md = await this._imgToMarkdown(img, options);
+        md += await this._imgToMarkdown(img, state, caption);
       }
       if (caption) {
-        md += `\n*Figure: ${caption}*\n\n`;
+        md += `\n*${caption}*\n\n`;
       }
-      return md;
+      return md + '\n';
     }
 
     // Pre & Code blocks
     if (tagName === 'pre') {
-      const code = node.textContent;
-      const lang = node.className.match(/lang(?:uage)?-(\w+)/)?.[1] || '';
-      return `\n\`\`\`${lang}\n${code.trim()}\n\`\`\`\n\n`;
+      const code = (node.textContent || '')
+        .replace(/[\u00AD\u200B\uFEFF]/g, '')
+        .replace(/\r\n/g, '\n')
+        .trim();
+      if (!code) return '';
+      const codeChild = node.querySelector('code');
+      const cls = (node.className || '') + ' ' + (codeChild?.className || '');
+      const lang = cls.match(/lang(?:uage)?-([a-zA-Z0-9+#_-]+)/)?.[1] || '';
+      return `\n\n\`\`\`${lang}\n${code}\n\`\`\`\n\n`;
     }
 
     if (tagName === 'code') {
-      return `\`${node.textContent}\``;
+      const text = this._cleanText(node.textContent).trim();
+      return text ? `\`${text}\`` : '';
     }
 
     // Headings
     if (/^h[1-6]$/.test(tagName)) {
       const level = '#'.repeat(parseInt(tagName[1], 10));
-      const text = node.textContent.trim();
+      const text = this._cleanText(node.textContent).trim();
+      if (!text) return '';
       return `\n\n${level} ${text}\n\n`;
     }
 
     // Paragraphs
     if (tagName === 'p') {
-      const childrenText = await this._processChildren(node, options);
-      return `\n\n${childrenText.trim()}\n\n`;
+      const childrenText = (await this._processChildren(node, state)).trim();
+      if (!childrenText) return '';
+      return `\n\n${childrenText}\n\n`;
+    }
+
+    // Line break
+    if (tagName === 'br') {
+      return '\n';
     }
 
     // Lists
     if (tagName === 'ul') {
-      let result = '\n';
+      let result = '\n\n';
       for (const li of node.children) {
         if (li.tagName.toLowerCase() === 'li') {
-          const itemText = await this._processChildren(li, options);
-          result += `- ${itemText.trim()}\n`;
+          const itemText = (await this._processChildren(li, state)).trim().replace(/\n+/g, ' ');
+          if (itemText) result += `- ${itemText}\n`;
         }
       }
       return result + '\n';
     }
 
     if (tagName === 'ol') {
-      let result = '\n';
+      let result = '\n\n';
       let idx = 1;
       for (const li of node.children) {
         if (li.tagName.toLowerCase() === 'li') {
-          const itemText = await this._processChildren(li, options);
-          result += `${idx}. ${itemText.trim()}\n`;
-          idx++;
+          const itemText = (await this._processChildren(li, state)).trim().replace(/\n+/g, ' ');
+          if (itemText) {
+            result += `${idx}. ${itemText}\n`;
+            idx++;
+          }
         }
       }
       return result + '\n';
@@ -107,26 +198,49 @@ class MarkdownBuilder {
 
     // Blockquote
     if (tagName === 'blockquote') {
-      const text = await this._processChildren(node, options);
-      return `\n> ${text.trim().replace(/\n/g, '\n> ')}\n\n`;
+      const text = (await this._processChildren(node, state)).trim();
+      if (!text) return '';
+      return `\n\n> ${text.replace(/\n+/g, '\n> ')}\n\n`;
     }
 
     // Links
     if (tagName === 'a') {
       const href = node.getAttribute('href') || '';
-      const linkText = node.textContent.trim();
-      return linkText ? `[${linkText}](${href})` : '';
+      const linkText = (await this._processChildren(node, state)).trim();
+      if (!linkText) return '';
+      if (!href || href.startsWith('#') || href.startsWith('javascript:')) {
+        return linkText;
+      }
+      try {
+        const absHref = new URL(href, window.location.href).href;
+        return `[${linkText}](${absHref})`;
+      } catch {
+        return linkText;
+      }
     }
 
-    // Strong / Em
+    // Strong / Bold (preserve outer spaces, avoid nested broken markers)
     if (tagName === 'strong' || tagName === 'b') {
-      const text = await this._processChildren(node, options);
-      return `**${text}**`;
+      const raw = await this._processChildren(node, state);
+      const trimmed = raw.trim().replace(/\*\*/g, '');
+      if (!trimmed) return raw;
+      const lead = raw.match(/^\s*/)?.[0] || '';
+      const trail = raw.match(/\s*$/)?.[0] || '';
+      return `${lead}**${trimmed}**${trail}`;
     }
 
+    // Emphasis / Italic (preserve outer spaces, avoid broken *word**s*)
     if (tagName === 'em' || tagName === 'i') {
-      const text = await this._processChildren(node, options);
-      return `*${text}*`;
+      const raw = await this._processChildren(node, state);
+      const trimmed = raw.trim().replace(/^\*+|\*+$/g, '');
+      if (!trimmed) return raw;
+      const lead = raw.match(/^\s*/)?.[0] || '';
+      const trail = raw.match(/\s*$/)?.[0] || '';
+      // If it's only a 1-char fragment split by bad HTML (e.g. "g" inside em), just return cleanly
+      if (trimmed.length <= 2 && /^[a-zA-Z]$/.test(trimmed)) {
+        return raw;
+      }
+      return `${lead}*${trimmed}*${trail}`;
     }
 
     // Horizontal Rule
@@ -134,20 +248,19 @@ class MarkdownBuilder {
       return '\n\n---\n\n';
     }
 
-    // Default: Process children
-    return await this._processChildren(node, options);
+    return await this._processChildren(node, state);
   }
 
-  static async _processChildren(node, options) {
+  static async _processChildren(node, state) {
     let result = '';
     for (const child of node.childNodes) {
-      result += await this._processNode(child, options);
+      result += await this._processNode(child, state);
     }
     return result;
   }
 
   /**
-   * Convert an HTML <table> into Markdown table syntax
+   * Convert an HTML <table> into clean GitHub-flavored Markdown table syntax
    */
   static _tableToMarkdown(table) {
     const rows = Array.from(table.querySelectorAll('tr'));
@@ -158,20 +271,25 @@ class MarkdownBuilder {
 
     for (const row of rows) {
       const cells = Array.from(row.querySelectorAll('th, td'));
+      if (!cells.length) continue;
       if (cells.length > maxCols) maxCols = cells.length;
-      const cellTexts = cells.map(c => c.textContent.trim().replace(/\|/g, '\\|').replace(/\n+/g, ' '));
+      const cellTexts = cells.map(c =>
+        this._cleanText(c.textContent)
+          .trim()
+          .replace(/\|/g, '\\|')
+          .replace(/\n+/g, ' ')
+      );
       mdRows.push(cellTexts);
     }
 
-    if (maxCols === 0) return '';
+    if (maxCols === 0 || mdRows.length === 0) return '';
 
-    // Normalize row lengths
     mdRows = mdRows.map(row => {
       while (row.length < maxCols) row.push('');
       return row;
     });
 
-    let output = '\n| ' + mdRows[0].join(' | ') + ' |\n';
+    let output = '| ' + mdRows[0].join(' | ') + ' |\n';
     output += '| ' + Array(maxCols).fill('---').join(' | ') + ' |\n';
 
     for (let i = 1; i < mdRows.length; i++) {
@@ -182,53 +300,109 @@ class MarkdownBuilder {
   }
 
   /**
-   * Convert <img> to Markdown with optional base64 embedding
+   * Convert <img> to clean relative local image link (saving actual PNG/JPG file separately)
+   * Eliminates massive inline base64 gibberish in the Markdown file!
    */
-  static async _imgToMarkdown(img, options) {
-    const src = img.getAttribute('src') || '';
-    const alt = (img.getAttribute('alt') || 'illustration').trim();
+  static async _imgToMarkdown(img, state, fallbackAlt = '') {
+    const rawSrc = img.getAttribute('src') || img.getAttribute('data-src') || '';
+    if (!rawSrc) return '';
 
-    if (!src) return '';
-
-    // If already data URI or embedding not requested
-    if (src.startsWith('data:') || !options.embedImagesAsBase64) {
-      return `![${alt}](${src})`;
-    }
-
-    try {
-      // Resolve relative URLs to absolute
-      const absoluteUrl = new URL(src, window.location.href).href;
-      const base64Data = await this._urlToBase64(absoluteUrl);
-      if (base64Data) {
-        return `![${alt}](${base64Data})`;
+    // Skip tiny tracking pixels / UI icons
+    const liveImg = state.liveImgMap.get(img.src) || state.liveImgMap.get(rawSrc);
+    if (liveImg && liveImg.complete && liveImg.naturalWidth > 0) {
+      if (liveImg.naturalWidth < 40 && liveImg.naturalHeight < 40) {
+        return '';
       }
-    } catch (e) {
-      console.warn('[LearnFlow] Image conversion failed, fallback to URL:', e);
     }
 
-    return `![${alt}](${src})`;
+    const alt = this._cleanText(img.getAttribute('alt') || fallbackAlt || 'Figure').trim();
+
+    if (!state.opts.extractImages) {
+      try {
+        const absUrl = new URL(rawSrc, window.location.href).href;
+        return `\n\n![${alt}](${absUrl})\n\n`;
+      } catch {
+        return `\n\n![${alt}](${rawSrc})\n\n`;
+      }
+    }
+
+    // Extract image data cleanly into a separate file in images/
+    let dataUrl = null;
+    if (rawSrc.startsWith('data:image/')) {
+      dataUrl = rawSrc;
+    } else {
+      try {
+        const absUrl = new URL(rawSrc, window.location.href).href;
+        dataUrl = await this.captureImageAsDataUrl(absUrl, liveImg);
+      } catch (e) {
+        console.warn('[LearnFlow] Could not extract image:', e);
+      }
+    }
+
+    if (dataUrl) {
+      state.imgCounter++;
+      const extMatch = dataUrl.match(/^data:image\/([a-zA-Z0-9+]+);/);
+      let ext = extMatch ? extMatch[1].replace('jpeg', 'jpg').replace('svg+xml', 'svg') : 'png';
+      const filename = `${state.opts.imagePrefix}${state.imgCounter}.${ext}`;
+
+      state.images.push({
+        filename,
+        dataUrl,
+        alt
+      });
+
+      return `\n\n![${alt}](images/${filename})\n\n`;
+    }
+
+    // Fallback to clean absolute URL if extraction failed
+    try {
+      const absUrl = new URL(rawSrc, window.location.href).href;
+      return `\n\n![${alt}](${absUrl})\n\n`;
+    } catch {
+      return '';
+    }
   }
 
   /**
-   * Fetch image and convert to Base64
+   * Robustly capture an image (works on authenticated O'Reilly pages via credentials: 'include' or Canvas)
    */
-  static async _urlToBase64(url) {
+  static async captureImageAsDataUrl(absoluteUrl, liveImgEl = null) {
+    // 1. Try authenticated fetch first (works on same-origin O'Reilly image assets)
     try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(blob);
-      });
+      const response = await fetch(absoluteUrl, { credentials: 'include' });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.type.startsWith('image/')) {
+          return await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
     } catch {
-      return null;
+      // Fallback to canvas below
     }
+
+    // 2. Fallback: draw already-loaded DOM <img> onto an offscreen canvas
+    if (liveImgEl && liveImgEl.complete && liveImgEl.naturalWidth > 0) {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = liveImgEl.naturalWidth;
+        canvas.height = liveImgEl.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(liveImgEl, 0, 0);
+        return canvas.toDataURL('image/png');
+      } catch {
+        return null;
+      }
+    }
+
+    return null;
   }
 }
 
-// Make available globally in content script and module contexts
 if (typeof window !== 'undefined') {
   window.MarkdownBuilder = MarkdownBuilder;
 }

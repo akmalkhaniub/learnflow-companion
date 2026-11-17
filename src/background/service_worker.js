@@ -1,6 +1,7 @@
 /**
  * service_worker.js - Background coordinator for LearnFlow & Ask Gemini Companion
- * Handles local disk downloads, Google Drive sync, Multi-Tab Queue Playlist, Omnibox, and Shortcuts.
+ * Handles clean local disk downloads (Markdown + separate images/ folder),
+ * Google Drive sync, Multi-Tab Queue Playlist, Omnibox, and Shortcuts.
  */
 
 import { GDriveSync } from '../utils/gdrive.js';
@@ -12,28 +13,30 @@ chrome.sidePanel
 
 // Register Context Menus on install
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: 'lf-read-selection',
-    title: '🎧 Read aloud with LearnFlow',
-    contexts: ['selection']
-  });
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: 'lf-read-selection',
+      title: '🎧 Read aloud with LearnFlow',
+      contexts: ['selection']
+    });
 
-  chrome.contextMenus.create({
-    id: 'lf-ask-gemini-selection',
-    title: '✨ Ask Gemini to explain this snippet',
-    contexts: ['selection']
-  });
+    chrome.contextMenus.create({
+      id: 'lf-ask-gemini-selection',
+      title: '✨ Ask Gemini to explain this snippet',
+      contexts: ['selection']
+    });
 
-  chrome.contextMenus.create({
-    id: 'lf-gemini-audio-brief',
-    title: '🎙️ Ask Gemini: 2-Min Audio Briefing of this page',
-    contexts: ['page']
-  });
+    chrome.contextMenus.create({
+      id: 'lf-gemini-audio-brief',
+      title: '🎙️ Ask Gemini: 2-Min Audio Briefing of this page',
+      contexts: ['page']
+    });
 
-  chrome.contextMenus.create({
-    id: 'lf-add-to-queue',
-    title: '📑 Add this page to Playlist Queue',
-    contexts: ['page']
+    chrome.contextMenus.create({
+      id: 'lf-add-to-queue',
+      title: '📑 Add this page to Playlist Queue',
+      contexts: ['page']
+    });
   });
 });
 
@@ -72,7 +75,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 // Omnibox Support: Type "lf <query>" in Chrome address bar
-chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
+chrome.omnibox.onInputEntered.addListener(async (text) => {
   const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (activeTab?.windowId) {
     await chrome.sidePanel.open({ windowId: activeTab.windowId });
@@ -99,46 +102,74 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
-function sanitize(name) {
-  return (name || 'General').replace(/[<>:"/\\|?*]/g, '_').substring(0, 80).trim();
+function sanitize(name, maxLen = 70) {
+  return (name || 'General')
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+    .replace(/\s+/g, ' ')
+    .replace(/^\.+|\.+$/g, '')
+    .trim()
+    .substring(0, maxLen)
+    .trim() || 'Document';
+}
+
+function downloadFile(url, filename) {
+  return new Promise((resolve) => {
+    chrome.downloads.download({
+      url,
+      filename,
+      saveAs: false,
+      conflictAction: 'overwrite'
+    }, (downloadId) => {
+      if (chrome.runtime.lastError) {
+        console.warn('[LearnFlow] Download error for', filename, ':', chrome.runtime.lastError.message);
+        resolve({ success: false, error: chrome.runtime.lastError.message });
+      } else {
+        resolve({ success: true, downloadId, filename });
+      }
+    });
+  });
 }
 
 /**
- * Save Markdown document directly to local disk (or custom Obsidian folder)
+ * Save clean Markdown document + separate image assets into a structured local folder
+ * Example:
+ *   Downloads/LearnFlow_Vault/OReilly/AI Agents in Action/4 Architecting multi-agent systems.md
+ *   Downloads/LearnFlow_Vault/OReilly/AI Agents in Action/images/4_architecting_fig_1.png
  */
 async function saveToLocalDisk(payload) {
   const settings = await chrome.storage.local.get(['obsidian_vault_folder']);
-  const baseFolder = settings.obsidian_vault_folder ? sanitize(settings.obsidian_vault_folder) : 'LearnFlow_Vault';
+  const rawBase = (settings.obsidian_vault_folder || 'LearnFlow_Vault').replace(/^\/+|\/+$/g, '');
+  const baseFolder = rawBase.split('/').map(p => sanitize(p, 50)).join('/');
 
-  const category = sanitize(payload.category || 'General');
-  const book = sanitize(payload.bookTitle || 'Tutorials');
-  const chapter = sanitize(payload.chapterTitle || payload.title || 'Note');
+  const category = sanitize(payload.category || 'General', 40);
+  const book = sanitize(payload.bookTitle || 'Tutorials', 65);
+  const chapter = sanitize(payload.chapterTitle || payload.title || 'Note', 65);
 
-  const filename = `${baseFolder}/${category}/${book}/${chapter}.md`;
+  const folderPrefix = `${baseFolder}/${category}/${book}`;
+  const mdFilename = `${folderPrefix}/${chapter}.md`;
 
-  const blob = new Blob([payload.markdown], { type: 'text/markdown;charset=utf-8' });
-  const reader = new FileReader();
+  // 1. Save clean UTF-8 Markdown file (zero base64 gibberish!)
+  const mdDataUrl = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(payload.markdown || '');
+  const mdResult = await downloadFile(mdDataUrl, mdFilename);
 
-  return new Promise((resolve) => {
-    reader.onloadend = () => {
-      const dataUrl = reader.result;
-      chrome.downloads.download({
-        url: dataUrl,
-        filename: filename,
-        saveAs: false,
-        conflictAction: 'overwrite'
-      }, (downloadId) => {
-        if (chrome.runtime.lastError) {
-          console.warn('[LearnFlow] Download error:', chrome.runtime.lastError);
-          resolve({ success: false, error: chrome.runtime.lastError.message });
-        } else {
-          console.log('[LearnFlow] Saved to local file:', filename, 'ID:', downloadId);
-          resolve({ success: true, downloadId, filename });
-        }
-      });
-    };
-    reader.readAsDataURL(blob);
-  });
+  // 2. Save extracted figure/diagram images into images/ subfolder
+  const savedImages = [];
+  if (Array.isArray(payload.images) && payload.images.length > 0) {
+    for (const img of payload.images) {
+      if (!img?.dataUrl || !img?.filename) continue;
+      const safeImgName = sanitize(img.filename, 60);
+      const imgPath = `${folderPrefix}/images/${safeImgName}`;
+      const imgRes = await downloadFile(img.dataUrl, imgPath);
+      if (imgRes.success) {
+        savedImages.push(imgPath);
+      }
+    }
+  }
+
+  return {
+    ...mdResult,
+    imagesSaved: savedImages.length
+  };
 }
 
 /**
@@ -156,14 +187,12 @@ async function advancePlaylist() {
     learnflow_auto_play_next: true
   });
 
-  // Check if a tab with this URL is already open
   const tabs = await chrome.tabs.query({ url: nextItem.url });
   if (tabs.length > 0) {
     const targetTab = tabs[0];
     await chrome.tabs.update(targetTab.id, { active: true });
     chrome.tabs.sendMessage(targetTab.id, { action: 'AUTO_START_READING' });
   } else {
-    // Open in new active tab
     await chrome.tabs.create({ url: nextItem.url, active: true });
   }
 }
@@ -209,6 +238,7 @@ async function recordArchivedItem(payload, localResult, gdriveResult) {
     url: payload.url,
     timestamp: Date.now(),
     localFile: localResult?.filename || null,
+    imagesSaved: localResult?.imagesSaved || 0,
     gdriveSynced: !!gdriveResult?.success
   });
 

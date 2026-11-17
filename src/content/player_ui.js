@@ -1,16 +1,19 @@
 /**
- * PlayerUI - Injected draggable floating widget with audio playback,
- * Soundwave Equalizer, Ask Gemini Audio Briefings, Code Whisperer, Sleep Timer, Multi-Tab Queue, and Cloud Sync.
+ * PlayerUI - Ultra-compact, dockable floating/edge player with expandable controls popover,
+ * Soundwave Equalizer, Ask Gemini Audio Briefings, Code Whisperer, Figure Vision toggle,
+ * Sleep Timer, Multi-Tab Queue, and 4 persistent Dock Modes (Float, Right, Left, Bottom).
  */
 class PlayerUI {
-  constructor(audioPlayer, onArchiveRequest, onGeminiBriefRequest, onAddToQueueRequest) {
+  constructor(audioPlayer, handlers = {}) {
     this.audioPlayer = audioPlayer;
-    this.onArchiveRequest = onArchiveRequest;
-    this.onGeminiBriefRequest = onGeminiBriefRequest;
-    this.onAddToQueueRequest = onAddToQueueRequest;
+    this.onArchiveRequest = handlers.onArchiveRequest || null;
+    this.onGeminiBriefRequest = handlers.onGeminiBriefRequest || null;
+    this.onAddToQueueRequest = handlers.onAddToQueueRequest || null;
+    this.onPlayRequest = handlers.onPlayRequest || null;
+
     this.root = null;
     this.autoAdvance = true;
-    this.isMinimized = false;
+    this.dockMode = 'dock-right'; // Default to sleek right-edge dock (zero book overlap!)
     this.siteType = ContentExtractor.getSiteType();
   }
 
@@ -34,74 +37,97 @@ class PlayerUI {
   }
 
   _renderReaderWidget() {
+    const siteLabel = this.siteType === 'oreilly' ? "O'REILLY" : (this.siteType === 'google_skills' ? 'SKILLS' : 'READER');
+
     this.root.innerHTML = `
-      <div class="learnflow-bar" title="Drag to move, click badge to minimize">
-        <button class="learnflow-btn learnflow-logo-btn" id="lf-btn-minimize" title="Minimize / Expand">
-          <span class="learnflow-badge">${this.siteType === 'oreilly' ? 'O\'REILLY' : (this.siteType === 'google_skills' ? 'SKILLS' : 'READER')}</span>
-        </button>
+      <div class="lf-popover" id="lf-popover">
+        <div class="lf-pop-header">
+          <span class="lf-pop-title">🎧 LearnFlow • ${siteLabel}</span>
+          <span id="lf-pop-status" style="font-size: 11px; color: #94a3b8;">Ready</span>
+        </div>
 
-        <div class="learnflow-controls">
-          <button class="learnflow-btn" id="lf-btn-prev" title="Previous sentence">⏮</button>
-          <button class="learnflow-btn learnflow-btn-primary" id="lf-btn-play" title="Play / Pause (Alt+L)">▶</button>
-          
-          <div class="lf-equalizer" id="lf-sound-equalizer" title="Speaking">
-            <div class="lf-bar-line"></div>
-            <div class="lf-bar-line"></div>
-            <div class="lf-bar-line"></div>
+        <div class="learnflow-progress-bar">
+          <div class="learnflow-progress-fill" id="lf-progress-fill"></div>
+        </div>
+
+        <div class="lf-pop-row">
+          <span class="lf-pop-label">Speed</span>
+          <select class="lf-pop-select" id="lf-speed-select">
+            <option value="0.8">0.8x</option>
+            <option value="1.0" selected>1.0x</option>
+            <option value="1.25">1.25x</option>
+            <option value="1.5">1.5x</option>
+            <option value="1.75">1.75x</option>
+            <option value="2.0">2.0x</option>
+          </select>
+        </div>
+
+        <div class="lf-pop-row">
+          <span class="lf-pop-label">Sleep Timer</span>
+          <select class="lf-pop-select" id="lf-sleep-select">
+            <option value="0">Off</option>
+            <option value="15">15 min</option>
+            <option value="25">25 min (Pomo)</option>
+            <option value="45">45 min</option>
+          </select>
+        </div>
+
+        <div class="lf-toggle-grid">
+          <div class="lf-chip-toggle active" id="lf-toggle-autonav" title="Auto-flip to next chapter when finished">
+            <span>🔄</span><span>Auto-Next</span>
           </div>
-
-          <button class="learnflow-btn" id="lf-btn-next" title="Next sentence">⏭</button>
-          <button class="learnflow-btn" id="lf-btn-stop" title="Stop">⏹</button>
-        </div>
-
-        <div class="learnflow-info">
-          <div class="learnflow-progress-text" id="lf-progress-text">Ready to play</div>
-          <div class="learnflow-progress-bar">
-            <div class="learnflow-progress-fill" id="lf-progress-fill"></div>
+          <div class="lf-chip-toggle active" id="lf-toggle-codewhisperer" title="Summarize code blocks aloud">
+            <span>💻</span><span>Code AI</span>
+          </div>
+          <div class="lf-chip-toggle active" id="lf-toggle-figures" title="Read figure captions & Gemini Vision descriptions">
+            <span>🖼️</span><span>Figure AI</span>
+          </div>
+          <div class="lf-chip-toggle" id="lf-btn-add-queue" title="Add page to Multi-Tab Playlist Queue">
+            <span>➕</span><span>+Queue</span>
           </div>
         </div>
 
-        <select class="learnflow-speed-select" id="lf-speed-select" title="Speech Speed">
-          <option value="0.8">0.8x</option>
-          <option value="1.0" selected>1.0x</option>
-          <option value="1.25">1.25x</option>
-          <option value="1.5">1.5x</option>
-          <option value="1.75">1.75x</option>
-          <option value="2.0">2.0x</option>
-        </select>
-
-        <select class="learnflow-speed-select" id="lf-sleep-select" title="Sleep / Pomodoro Timer">
-          <option value="0">⏱️ Off</option>
-          <option value="15">⏱️ 15m</option>
-          <option value="25">⏱️ 25m (Pomo)</option>
-          <option value="45">⏱️ 45m</option>
-        </select>
-
-        <div class="learnflow-toggle active" id="lf-toggle-autonav" title="Auto-advance to next chapter/step when done">
-          <span>🔄</span>
-          <span>Auto-Next</span>
+        <div>
+          <div class="lf-pop-label" style="margin-bottom: 5px;">Dock Position</div>
+          <div class="lf-dock-grid">
+            <button class="lf-dock-btn" data-dock="dock-left" title="Dock to Left Edge">◧ Left</button>
+            <button class="lf-dock-btn" data-dock="dock-bottom" title="Dock to Bottom Edge">⬓ Bot</button>
+            <button class="lf-dock-btn" data-dock="dock-right" title="Dock to Right Edge">◨ Right</button>
+            <button class="lf-dock-btn" data-dock="float" title="Free Floating Pill">✥ Float</button>
+          </div>
         </div>
 
-        <div class="learnflow-toggle active" id="lf-toggle-codewhisperer" title="Code Whisperer: summarize code blocks aloud">
-          <span>💻</span>
-          <span>Code AI</span>
+        <div class="lf-pop-actions">
+          <button class="lf-pop-action-btn" id="lf-btn-stop">⏹ Stop</button>
+          <button class="lf-pop-action-btn" id="lf-btn-pop-archive">💾 Archive</button>
         </div>
 
-        <button class="learnflow-btn lf-gemini-btn" id="lf-btn-gemini" title="✨ Ask Gemini: 2-Min Audio Briefing (Alt+G)">
-          ✨
-        </button>
+        <div class="lf-pop-hint">Tip: <b>Alt + Click</b> any paragraph to read from there</div>
+      </div>
 
-        <button class="learnflow-btn" id="lf-btn-add-queue" title="📑 Add to Multi-Tab Playlist Queue">
-          ➕
-        </button>
+      <div class="learnflow-bar" id="lf-main-bar" title="LearnFlow Player (Drag when floating)">
+        <button class="learnflow-btn" id="lf-btn-minimize" title="Collapse / Expand">🎧</button>
+        <button class="learnflow-btn learnflow-btn-primary" id="lf-btn-play" title="Play / Pause (Alt+L)">▶</button>
 
-        <button class="learnflow-btn" id="lf-btn-archive" title="Archive page (Markdown + Figures + Tables) to Local Drive & Google Drive">
-          💾
-        </button>
+        <div class="lf-equalizer" id="lf-sound-equalizer" title="Speaking">
+          <div class="lf-bar-line"></div>
+          <div class="lf-bar-line"></div>
+          <div class="lf-bar-line"></div>
+        </div>
+
+        <span class="lf-mini-progress" id="lf-progress-text" title="Reading progress">0%</span>
+
+        <button class="learnflow-btn" id="lf-btn-prev" title="Previous">⏮</button>
+        <button class="learnflow-btn" id="lf-btn-next" title="Next">⏭</button>
+        <button class="learnflow-btn lf-gemini-btn" id="lf-btn-gemini" title="✨ Ask Gemini: 2-Min Audio Brief (Alt+G)">✨</button>
+        <button class="learnflow-btn" id="lf-btn-archive" title="Save clean Markdown + Figures + Tables">💾</button>
+        <button class="learnflow-btn" id="lf-btn-settings" title="Settings & Dock Options">⚙</button>
       </div>
     `;
 
-    // Event Handlers
+    // Element Refs
+    const bar = this.root.querySelector('#lf-main-bar');
+    const popover = this.root.querySelector('#lf-popover');
     const playBtn = this.root.querySelector('#lf-btn-play');
     const stopBtn = this.root.querySelector('#lf-btn-stop');
     const prevBtn = this.root.querySelector('#lf-btn-prev');
@@ -110,52 +136,105 @@ class PlayerUI {
     const sleepSelect = this.root.querySelector('#lf-sleep-select');
     const autoNavToggle = this.root.querySelector('#lf-toggle-autonav');
     const codeWhisperToggle = this.root.querySelector('#lf-toggle-codewhisperer');
+    const figureToggle = this.root.querySelector('#lf-toggle-figures');
     const archiveBtn = this.root.querySelector('#lf-btn-archive');
+    const popArchiveBtn = this.root.querySelector('#lf-btn-pop-archive');
     const geminiBtn = this.root.querySelector('#lf-btn-gemini');
     const addQueueBtn = this.root.querySelector('#lf-btn-add-queue');
+    const settingsBtn = this.root.querySelector('#lf-btn-settings');
     const minimizeBtn = this.root.querySelector('#lf-btn-minimize');
     const equalizer = this.root.querySelector('#lf-sound-equalizer');
+    const dockBtns = this.root.querySelectorAll('.lf-dock-btn');
 
+    // Play / Pause
     playBtn.addEventListener('click', () => {
       if (this.audioPlayer.isPlaying) {
         this.audioPlayer.pause();
+      } else if (this.onPlayRequest) {
+        this.onPlayRequest();
       } else {
         this.audioPlayer.play();
       }
     });
 
-    stopBtn.addEventListener('click', () => this.audioPlayer.stop());
+    stopBtn.addEventListener('click', () => {
+      this.audioPlayer.stop();
+      popover.classList.remove('open');
+    });
+
     prevBtn.addEventListener('click', () => this.audioPlayer.previous());
     nextBtn.addEventListener('click', () => this.audioPlayer.next());
 
+    // Settings Popover toggle
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      popover.classList.toggle('open');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!this.root.contains(e.target)) {
+        popover.classList.remove('open');
+      }
+    });
+
+    // Minimize / Expand
+    minimizeBtn.addEventListener('click', () => {
+      bar.classList.toggle('minimized');
+      if (bar.classList.contains('minimized')) {
+        popover.classList.remove('open');
+      }
+    });
+
+    // Speed
     speedSelect.addEventListener('change', (e) => {
       const rate = parseFloat(e.target.value);
       this.audioPlayer.setRate(rate);
       chrome.storage.local.set({ learnflow_preferred_rate: rate });
     });
 
+    // Sleep Timer
     sleepSelect.addEventListener('change', (e) => {
       const mins = parseInt(e.target.value, 10);
       this.audioPlayer.setSleepTimer(mins);
-      this.showToast(mins > 0 ? `Sleep timer set for ${mins} minutes` : 'Sleep timer disabled');
+      this.showToast(mins > 0 ? `Sleep timer: ${mins}m` : 'Sleep timer off');
     });
 
+    // Toggles
     autoNavToggle.addEventListener('click', () => {
       this.autoAdvance = !this.autoAdvance;
       autoNavToggle.classList.toggle('active', this.autoAdvance);
       chrome.storage.local.set({ learnflow_auto_advance_enabled: this.autoAdvance });
-      this.showToast(this.autoAdvance ? 'Auto-Advance enabled' : 'Auto-Advance disabled');
+      this.showToast(this.autoAdvance ? 'Auto-Next ON' : 'Auto-Next OFF');
     });
 
     codeWhisperToggle.addEventListener('click', () => {
       this.audioPlayer.codeWhispererEnabled = !this.audioPlayer.codeWhispererEnabled;
       codeWhisperToggle.classList.toggle('active', this.audioPlayer.codeWhispererEnabled);
-      this.showToast(this.audioPlayer.codeWhispererEnabled ? 'Code Whisperer ON (summarizes code)' : 'Code Whisperer OFF (skips code)');
+      this.showToast(this.audioPlayer.codeWhispererEnabled ? 'Code Whisperer ON' : 'Code Whisperer OFF');
     });
 
-    archiveBtn.addEventListener('click', () => {
-      if (this.onArchiveRequest) this.onArchiveRequest();
+    figureToggle.addEventListener('click', () => {
+      this.audioPlayer.figureNarrationEnabled = !this.audioPlayer.figureNarrationEnabled;
+      figureToggle.classList.toggle('active', this.audioPlayer.figureNarrationEnabled);
+      this.showToast(this.audioPlayer.figureNarrationEnabled ? 'Figure Narration ON' : 'Figure Narration OFF');
     });
+
+    // Dock Buttons
+    dockBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.dock;
+        this.applyDockMode(mode);
+        chrome.storage.local.set({ learnflow_dock_mode: mode });
+      });
+    });
+
+    // Actions
+    const triggerArchive = () => {
+      popover.classList.remove('open');
+      if (this.onArchiveRequest) this.onArchiveRequest();
+    };
+    archiveBtn.addEventListener('click', triggerArchive);
+    popArchiveBtn.addEventListener('click', triggerArchive);
 
     geminiBtn.addEventListener('click', () => {
       if (this.onGeminiBriefRequest) this.onGeminiBriefRequest();
@@ -165,58 +244,77 @@ class PlayerUI {
       if (this.onAddToQueueRequest) this.onAddToQueueRequest();
     });
 
-    minimizeBtn.addEventListener('click', () => {
-      const bar = this.root.querySelector('.learnflow-bar');
-      bar.classList.toggle('minimized');
-    });
-
+    // AudioPlayer callbacks -> UI updates
     this.audioPlayer.onStateChange = (state) => {
       playBtn.textContent = state.isPlaying ? '⏸' : '▶';
-      if (equalizer) {
-        equalizer.classList.toggle('active', state.isPlaying);
-      }
+      if (equalizer) equalizer.classList.toggle('active', state.isPlaying);
+      const popStatus = this.root.querySelector('#lf-pop-status');
+      if (popStatus) popStatus.textContent = state.isPlaying ? 'Speaking...' : (state.isPaused ? 'Paused' : 'Ready');
     };
 
     this.audioPlayer.onProgress = (prog) => {
       const text = this.root.querySelector('#lf-progress-text');
       const fill = this.root.querySelector('#lf-progress-fill');
-      if (text) text.textContent = `${prog.percent}% (${prog.current}/${prog.total})`;
+      const popStatus = this.root.querySelector('#lf-pop-status');
+      if (text) {
+        text.textContent = `${prog.percent}%`;
+        text.title = `Segment ${prog.current} of ${prog.total}`;
+      }
       if (fill) fill.style.width = `${prog.percent}%`;
+      if (popStatus) popStatus.textContent = `${prog.current} / ${prog.total} (${prog.percent}%)`;
+    };
+
+    this.audioPlayer.onStatusMessage = (msg) => {
+      const popStatus = this.root.querySelector('#lf-pop-status');
+      if (popStatus) popStatus.textContent = msg;
+      this.showToast(msg, 2200);
     };
 
     this.audioPlayer.onSleepTick = (remainingSec) => {
       if (remainingSec > 0 && remainingSec % 60 === 0) {
-        this.showToast(`⏱️ ${Math.ceil(remainingSec / 60)}m until sleep pause`);
+        this.showToast(`⏱️ ${Math.ceil(remainingSec / 60)}m left`);
       }
     };
   }
 
   _renderYouTubeWidget() {
     this.root.innerHTML = `
-      <div class="learnflow-bar" title="YouTube Companion Bar">
-        <span class="learnflow-badge">YOUTUBE</span>
-        <button class="learnflow-btn learnflow-btn-primary" id="lf-yt-snapshot" title="Capture current frame screenshot + transcript to local & Google Drive">
-          📸 Save Note & Transcript
-        </button>
-        <button class="learnflow-btn lf-gemini-btn" id="lf-yt-gemini" title="✨ Ask Gemini to summarize this video">
-          ✨ Ask Gemini
-        </button>
-        <button class="learnflow-btn" id="lf-yt-add-queue" title="📑 Add video to Playlist Queue">
-          ➕ Queue
-        </button>
-        <button class="learnflow-btn" id="lf-btn-minimize" title="Minimize">─</button>
+      <div class="lf-popover" id="lf-popover">
+        <div class="lf-pop-header">
+          <span class="lf-pop-title">🎬 LearnFlow • YOUTUBE</span>
+        </div>
+        <div>
+          <div class="lf-pop-label" style="margin-bottom: 5px;">Dock Position</div>
+          <div class="lf-dock-grid">
+            <button class="lf-dock-btn" data-dock="dock-left">◧ Left</button>
+            <button class="lf-dock-btn" data-dock="dock-bottom">⬓ Bot</button>
+            <button class="lf-dock-btn" data-dock="dock-right">◨ Right</button>
+            <button class="lf-dock-btn" data-dock="float">✥ Float</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="learnflow-bar" id="lf-main-bar" title="YouTube Companion">
+        <button class="learnflow-btn" id="lf-btn-minimize" title="Collapse / Expand">🎬</button>
+        <button class="learnflow-btn learnflow-btn-primary" id="lf-yt-snapshot" title="Capture video screenshot + transcript">📸</button>
+        <button class="learnflow-btn lf-gemini-btn" id="lf-yt-gemini" title="✨ Ask Gemini to summarize this video">✨</button>
+        <button class="learnflow-btn" id="lf-yt-add-queue" title="➕ Add video to Playlist Queue">➕</button>
+        <button class="learnflow-btn" id="lf-btn-settings" title="Dock Options">⚙</button>
       </div>
     `;
 
+    const bar = this.root.querySelector('#lf-main-bar');
+    const popover = this.root.querySelector('#lf-popover');
     const snapshotBtn = this.root.querySelector('#lf-yt-snapshot');
     const geminiBtn = this.root.querySelector('#lf-yt-gemini');
     const queueBtn = this.root.querySelector('#lf-yt-add-queue');
     const minimizeBtn = this.root.querySelector('#lf-btn-minimize');
+    const settingsBtn = this.root.querySelector('#lf-btn-settings');
 
     snapshotBtn.addEventListener('click', async () => {
-      snapshotBtn.textContent = '⏳ Saving...';
+      snapshotBtn.textContent = '⏳';
       if (this.onArchiveRequest) await this.onArchiveRequest();
-      snapshotBtn.textContent = '📸 Save Note & Transcript';
+      snapshotBtn.textContent = '📸';
     });
 
     geminiBtn.addEventListener('click', () => {
@@ -227,12 +325,49 @@ class PlayerUI {
       if (this.onAddToQueueRequest) this.onAddToQueueRequest();
     });
 
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      popover.classList.toggle('open');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!this.root.contains(e.target)) {
+        popover.classList.remove('open');
+      }
+    });
+
     minimizeBtn.addEventListener('click', () => {
-      this.root.querySelector('.learnflow-bar').classList.toggle('minimized');
+      bar.classList.toggle('minimized');
+      if (bar.classList.contains('minimized')) popover.classList.remove('open');
+    });
+
+    this.root.querySelectorAll('.lf-dock-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.dock;
+        this.applyDockMode(mode);
+        chrome.storage.local.set({ learnflow_dock_mode: mode });
+      });
     });
   }
 
-  showToast(message, duration = 3000) {
+  applyDockMode(mode) {
+    this.dockMode = mode || 'dock-right';
+    this.root.classList.remove('dock-right', 'dock-left', 'dock-bottom', 'float');
+    this.root.style.left = '';
+    this.root.style.top = '';
+    this.root.style.right = '';
+    this.root.style.bottom = '';
+
+    if (this.dockMode !== 'float') {
+      this.root.classList.add(this.dockMode);
+    }
+
+    this.root.querySelectorAll('.lf-dock-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.dock === this.dockMode);
+    });
+  }
+
+  showToast(message, duration = 2800) {
     const existing = this.root.querySelector('.learnflow-toast');
     if (existing) existing.remove();
 
@@ -247,7 +382,12 @@ class PlayerUI {
   }
 
   async _loadSettings() {
-    const data = await chrome.storage.local.get(['learnflow_preferred_rate', 'learnflow_auto_advance_enabled']);
+    const data = await chrome.storage.local.get([
+      'learnflow_preferred_rate',
+      'learnflow_auto_advance_enabled',
+      'learnflow_dock_mode'
+    ]);
+
     if (data.learnflow_preferred_rate) {
       const select = this.root.querySelector('#lf-speed-select');
       if (select) {
@@ -255,11 +395,15 @@ class PlayerUI {
         this.audioPlayer.setRate(data.learnflow_preferred_rate);
       }
     }
+
     if (data.learnflow_auto_advance_enabled !== undefined) {
       this.autoAdvance = data.learnflow_auto_advance_enabled;
       const toggle = this.root.querySelector('#lf-toggle-autonav');
       if (toggle) toggle.classList.toggle('active', this.autoAdvance);
     }
+
+    // Apply saved dock mode (defaults to sleek right edge dock!)
+    this.applyDockMode(data.learnflow_dock_mode || 'dock-right');
   }
 
   _makeDraggable(element) {
@@ -267,12 +411,13 @@ class PlayerUI {
     let startX, startY, initialX, initialY;
 
     element.addEventListener('mousedown', (e) => {
-      if (e.target.closest('button, select, .learnflow-toggle')) return;
+      if (this.dockMode !== 'float') return; // Only drag when in Float mode
+      if (e.target.closest('button, select, .lf-chip-toggle')) return;
 
       isDragging = true;
       startX = e.clientX;
       startY = e.clientY;
-      const rect = element.getBoundingClientRect();
+      const rect = this.root.getBoundingClientRect();
       initialX = rect.left;
       initialY = rect.top;
 
@@ -282,8 +427,8 @@ class PlayerUI {
         const dy = ev.clientY - startY;
         this.root.style.right = 'auto';
         this.root.style.bottom = 'auto';
-        this.root.style.left = `${initialX + dx}px`;
-        this.root.style.top = `${initialY + dy}px`;
+        this.root.style.left = `${Math.max(0, Math.min(window.innerWidth - rect.width, initialX + dx))}px`;
+        this.root.style.top = `${Math.max(0, Math.min(window.innerHeight - rect.height, initialY + dy))}px`;
       };
 
       const onMouseUp = () => {

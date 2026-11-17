@@ -1,18 +1,50 @@
 /**
- * content_main.js - Orchestrates content extraction, audio playback,
- * Ask Gemini Audio Briefings, Code Whisperer, Multi-Tab Queue, and auto-advancing.
+ * content_main.js - Orchestrates dynamic content extraction (SPA-aware),
+ * audio playback with Figure/Code/Table narration, Alt+Click jump-to-read,
+ * Ask Gemini Briefings, Multi-Tab Queue, and clean archival (separate image files).
  */
 (async function initLearnFlowContent() {
   console.log('[LearnFlow] Content script initializing on:', window.location.href);
 
-  // Initialize Core Engines
   const audioPlayer = new AudioPlayer();
   let extractedData = null;
+  let lastExtractedUrl = null;
 
-  // Archival function
+  /**
+   * Ensure fresh extraction of the main reading area (critical for O'Reilly/skills.google SPAs!)
+   */
+  const ensureFreshExtraction = (force = false) => {
+    if (YouTubeHandler.isYouTube()) return null;
+
+    if (force || !extractedData || lastExtractedUrl !== window.location.href || !extractedData.chunks?.length) {
+      extractedData = ContentExtractor.extract();
+      lastExtractedUrl = window.location.href;
+      if (extractedData.chunks && extractedData.chunks.length > 0) {
+        audioPlayer.setQueue(extractedData.chunks);
+        console.log(`[LearnFlow] Extracted ${extractedData.chunks.length} main-content segments from:`, extractedData.title);
+      }
+    }
+    return extractedData;
+  };
+
+  // Play handler: re-extracts if URL changed or DOM finished loading after initial script injection
+  const handlePlay = () => {
+    if (audioPlayer.isPaused && lastExtractedUrl === window.location.href) {
+      audioPlayer.play();
+      return;
+    }
+    const data = ensureFreshExtraction(lastExtractedUrl !== window.location.href || !audioPlayer.chunks.length);
+    if (!data || !data.chunks?.length) {
+      if (playerUI) playerUI.showToast('No readable content found on this page.');
+      return;
+    }
+    audioPlayer.play();
+  };
+
+  // Archival function: clean Markdown + separate image files (ZERO inline base64 gibberish!)
   const handleArchive = async () => {
     try {
-      if (playerUI) playerUI.showToast('Archiving with figures & tables...');
+      if (playerUI) playerUI.showToast('Archiving clean Markdown + figures...');
 
       let archivePayload = null;
 
@@ -24,41 +56,50 @@
           bookTitle: ytData.channel,
           chapterTitle: ytData.title,
           url: ytData.url,
-          markdown: ytData.markdown
+          markdown: ytData.markdown,
+          images: ytData.images || []
         };
       } else {
-        if (!extractedData) {
-          extractedData = ContentExtractor.extract();
-        }
+        const data = ensureFreshExtraction(true);
 
-        const mdContent = await MarkdownBuilder.elementToMarkdown(extractedData.contentEl, {
-          embedImagesAsBase64: true
+        // Short unique prefix per chapter so figures don't collide in images/
+        const chapterSlug = (data.chapterTitle || 'ch')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '')
+          .substring(0, 20) || 'page';
+
+        const { markdown: mdContent, images } = await MarkdownBuilder.elementToMarkdownWithAssets(data.contentEl, {
+          extractImages: true,
+          imagePrefix: `${chapterSlug}_fig_`
         });
 
-        // Also ask Gemini to generate 3-4 Anki flashcards to append
+        // Append Anki flashcards if Gemini AI is configured
         let flashcardSection = '';
         try {
-          const rawSample = extractedData.contentEl.textContent.trim().substring(0, 10000);
+          const rawSample = (data.contentEl.innerText || data.contentEl.textContent || '').trim().substring(0, 10000);
           const ankiCards = await GeminiAI.generateAnkiCards(rawSample);
           if (ankiCards && ankiCards.includes('Q:')) {
-            flashcardSection = `\n\n## 📇 Active Recall & Flashcards\n\n${ankiCards}\n\n`;
+            flashcardSection = `\n\n## 📇 Active Recall & Flashcards\n\n${ankiCards}\n`;
           }
         } catch (e) {
           console.log('[LearnFlow] Anki generation skipped:', e);
         }
 
-        const fullMarkdown = `# ${extractedData.title}\n\n` +
+        const fullMarkdown = `# ${data.chapterTitle}\n\n` +
+          `**Book / Source:** ${data.bookTitle}\n` +
           `**Source URL:** [${window.location.href}](${window.location.href})\n` +
           `**Archived At:** ${new Date().toLocaleString()}\n\n---\n\n` +
           mdContent + flashcardSection;
 
         archivePayload = {
-          title: extractedData.title,
-          category: extractedData.category,
-          bookTitle: extractedData.bookTitle,
-          chapterTitle: extractedData.chapterTitle,
+          title: data.title,
+          category: data.category,
+          bookTitle: data.bookTitle,
+          chapterTitle: data.chapterTitle,
           url: window.location.href,
-          markdown: fullMarkdown
+          markdown: fullMarkdown,
+          images
         };
       }
 
@@ -67,7 +108,9 @@
         payload: archivePayload
       }, (response) => {
         if (response && response.success) {
-          if (playerUI) playerUI.showToast('✓ Saved to Local Vault & Google Drive!');
+          const imgCount = archivePayload.images?.length || 0;
+          const imgNote = imgCount > 0 ? ` + ${imgCount} figure${imgCount > 1 ? 's' : ''}` : '';
+          if (playerUI) playerUI.showToast(`✓ Saved Markdown${imgNote}!`);
         } else {
           if (playerUI) playerUI.showToast('Saved locally (' + (response?.error || 'ready') + ')');
         }
@@ -88,8 +131,8 @@
         const yt = await YouTubeHandler.buildVideoStudyGuide(false);
         rawText = yt.markdown;
       } else {
-        if (!extractedData) extractedData = ContentExtractor.extract();
-        rawText = extractedData.contentEl.textContent.trim().substring(0, 20000);
+        const data = ensureFreshExtraction(true);
+        rawText = (data.contentEl.innerText || data.contentEl.textContent || '').trim().substring(0, 20000);
       }
 
       const brief = await GeminiAI.generateAudioBrief(rawText);
@@ -122,27 +165,47 @@
     if (playerUI) playerUI.showToast(`📑 Added to Playlist Queue (#${playlist.length})`);
   };
 
-  // Instantiate UI
-  const playerUI = new PlayerUI(audioPlayer, handleArchive, handleGeminiBrief, handleAddToQueue);
+  // Instantiate Compact Dockable UI
+  const playerUI = new PlayerUI(audioPlayer, {
+    onArchiveRequest: handleArchive,
+    onGeminiBriefRequest: handleGeminiBrief,
+    onAddToQueueRequest: handleAddToQueue,
+    onPlayRequest: handlePlay
+  });
   playerUI.init();
 
-  // If not YouTube, extract readable text chunks
-  if (!YouTubeHandler.isYouTube()) {
-    extractedData = ContentExtractor.extract();
-    if (extractedData.chunks && extractedData.chunks.length > 0) {
-      audioPlayer.setQueue(extractedData.chunks);
-      console.log(`[LearnFlow] Extracted ${extractedData.chunks.length} segments from:`, extractedData.title);
+  // Alt + Click on any paragraph/heading/figure to jump right there and start reading!
+  document.addEventListener('click', (e) => {
+    if (!e.altKey || YouTubeHandler.isYouTube()) return;
+    if (e.target.closest('#learnflow-player-root')) return;
+
+    const targetBlock = e.target.closest('p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, figure, table');
+    if (!targetBlock) return;
+
+    e.preventDefault();
+    ensureFreshExtraction(lastExtractedUrl !== window.location.href || !audioPlayer.chunks.length);
+    const jumped = audioPlayer.jumpToElement(targetBlock);
+    if (jumped) {
+      playerUI.showToast('🎧 Reading from selected spot');
+    } else {
+      playerUI.showToast('Click inside the main article text');
     }
+  });
+
+  // Initial extraction (delayed slightly for SPA hydration on O'Reilly / skills.google)
+  if (!YouTubeHandler.isYouTube()) {
+    setTimeout(() => {
+      ensureFreshExtraction(false);
+    }, 900);
 
     // End of chapter reached
     audioPlayer.onComplete = async () => {
       console.log('[LearnFlow] Audio reached end of section.');
       await handleArchive();
 
-      // Check if playlist queue has more tabs waiting
       const data = await chrome.storage.local.get(['learnflow_playlist']);
       if (data.learnflow_playlist && data.learnflow_playlist.length > 0) {
-        playerUI.showToast('Switching to next item in Playlist Queue in 2s...');
+        playerUI.showToast('Next item in Playlist Queue in 2s...');
         setTimeout(() => {
           chrome.runtime.sendMessage({ action: 'PLAYLIST_ADVANCE' });
         }, 2000);
@@ -163,7 +226,37 @@
     };
   }
 
-  // Automatic Page Tracking
+  // Watch for SPA URL navigation (O'Reilly & skills.google switch chapters without page reload!)
+  let currentUrl = window.location.href;
+  setInterval(async () => {
+    if (window.location.href !== currentUrl) {
+      currentUrl = window.location.href;
+      extractedData = null;
+      lastExtractedUrl = null;
+      audioPlayer.stop();
+
+      chrome.runtime.sendMessage({
+        action: 'LOG_PAGE_VISIT',
+        payload: {
+          title: document.title,
+          url: currentUrl,
+          siteType: ContentExtractor.getSiteType(),
+          timestamp: Date.now()
+        }
+      });
+
+      const shouldResume = await AutoNavigator.checkAutoResume();
+      setTimeout(() => {
+        ensureFreshExtraction(true);
+        if (shouldResume && !YouTubeHandler.isYouTube()) {
+          playerUI.showToast('Auto-playing next chapter...');
+          audioPlayer.play();
+        }
+      }, 1500);
+    }
+  }, 1500);
+
+  // Log initial visit
   chrome.runtime.sendMessage({
     action: 'LOG_PAGE_VISIT',
     payload: {
@@ -174,15 +267,15 @@
     }
   });
 
-  // Check if we arrived here through Auto-Advance or Playlist Queue
+  // Check if we arrived here through full-page Auto-Advance
   const shouldAutoResume = await AutoNavigator.checkAutoResume();
-  if (shouldAutoResume) {
-    console.log('[LearnFlow] Auto-resume flag detected. Starting audio playback in 1.2s...');
-    setTimeout(async () => {
+  if (shouldAutoResume && !YouTubeHandler.isYouTube()) {
+    setTimeout(() => {
+      ensureFreshExtraction(true);
       playerUI.showToast('Auto-playing next chapter...');
       audioPlayer.play();
       handleArchive();
-    }, 1200);
+    }, 1500);
   }
 
   // Listen for messages from background / shortcuts / context menus
@@ -191,7 +284,7 @@
       if (audioPlayer.isPlaying) {
         audioPlayer.pause();
       } else {
-        audioPlayer.play();
+        handlePlay();
       }
     } else if (message.action === 'TRIGGER_GEMINI_AUDIO_BRIEF') {
       handleGeminiBrief();
@@ -201,7 +294,7 @@
         audioPlayer.play();
       }
     } else if (message.action === 'AUTO_START_READING') {
-      audioPlayer.play();
+      handlePlay();
     }
   });
 })();

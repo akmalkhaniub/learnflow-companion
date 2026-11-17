@@ -1,6 +1,7 @@
 /**
  * AudioPlayer - Browser-native Text-to-Speech Engine with sentence highlighting,
- * Smart Code Whisperer, Sleep/Pomodoro timer, speed controls, and auto-advance.
+ * Smart Code Whisperer, Figure Vision Narration, Table Narration, Sleep/Pomodoro timer,
+ * Alt+Click jump-to-paragraph, and auto-advance.
  */
 class AudioPlayer {
   constructor() {
@@ -15,9 +16,9 @@ class AudioPlayer {
     this.currentUtterance = null;
     this.keepAliveTimer = null;
 
-    // Advanced Features
+    // Smart Narration Modes
     this.codeWhispererEnabled = true;
-    this.sleepTimer = null;
+    this.figureNarrationEnabled = true;
     this.sleepRemainingSeconds = 0;
     this.sleepInterval = null;
 
@@ -26,17 +27,34 @@ class AudioPlayer {
     this.onProgress = null;
     this.onComplete = null;
     this.onSleepTick = null;
+    this.onStatusMessage = null;
 
     this._initVoices();
   }
 
   _initVoices() {
-    const setVoice = () => {
+    const setVoice = async () => {
       const voices = this.synth.getVoices();
       if (!voices.length) return;
 
-      const preferred = voices.find(v => 
-        (v.lang.startsWith('en')) && 
+      let savedVoiceName = null;
+      try {
+        const data = await chrome.storage.local.get(['learnflow_preferred_voice']);
+        savedVoiceName = data.learnflow_preferred_voice;
+      } catch {
+        // ignore
+      }
+
+      if (savedVoiceName) {
+        const exact = voices.find(v => v.name === savedVoiceName);
+        if (exact) {
+          this.selectedVoice = exact;
+          return;
+        }
+      }
+
+      const preferred = voices.find(v =>
+        v.lang.startsWith('en') &&
         (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Online') || v.name.includes('Neural'))
       ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
 
@@ -55,6 +73,25 @@ class AudioPlayer {
     this.currentIndex = 0;
   }
 
+  /**
+   * Jump directly to the chunk belonging to a clicked DOM element and start speaking
+   */
+  jumpToElement(targetEl) {
+    if (!targetEl || !this.chunks.length) return false;
+
+    const idx = this.chunks.findIndex(c => c.element && (c.element === targetEl || c.element.contains(targetEl) || targetEl.contains(c.element)));
+    if (idx === -1) return false;
+
+    this.synth.cancel();
+    this.currentIndex = idx;
+    this.isPlaying = true;
+    this.isPaused = false;
+    this._startKeepAlive();
+    this._notifyState();
+    this._speakChunk(this.currentIndex);
+    return true;
+  }
+
   play() {
     if (!this.chunks.length) return;
 
@@ -70,6 +107,7 @@ class AudioPlayer {
     this.isPlaying = true;
     this.isPaused = false;
     this._startKeepAlive();
+    this._notifyState();
     this._speakChunk(this.currentIndex);
   }
 
@@ -129,7 +167,6 @@ class AudioPlayer {
 
   /**
    * Sleep / Pomodoro Timer: Stops playback after N minutes
-   * @param {number|null} minutes null cancels timer
    */
   setSleepTimer(minutes) {
     if (this.sleepInterval) {
@@ -154,7 +191,6 @@ class AudioPlayer {
       if (this.sleepRemainingSeconds <= 0) {
         clearInterval(this.sleepInterval);
         this.sleepInterval = null;
-        console.log('[LearnFlow] Sleep timer reached. Stopping audio.');
         this.stop();
         if (this.onSleepTick) this.onSleepTick(0);
       }
@@ -162,6 +198,8 @@ class AudioPlayer {
   }
 
   async _speakChunk(index) {
+    if (!this.isPlaying) return;
+
     if (index >= this.chunks.length) {
       this.stop();
       if (this.onComplete) {
@@ -171,26 +209,80 @@ class AudioPlayer {
     }
 
     const chunk = this.chunks[index];
+    this._highlightElement(chunk.element);
+    this._notifyProgress();
+
     let textToSpeak = chunk.text;
 
-    // Smart Code Whisperer: If code block, convert to spoken summary
+    // 1. CODE BLOCK -> Smart Code Whisperer
     if (chunk.type === 'code') {
       if (!this.codeWhispererEnabled) {
-        // Skip code block if disabled
         this.currentIndex++;
         this._speakChunk(this.currentIndex);
         return;
       }
 
       if (!chunk.spokenText) {
+        if (this.onStatusMessage) this.onStatusMessage('Summarizing code...');
+        let summary = null;
         if (typeof GeminiAI !== 'undefined') {
-          chunk.spokenText = await GeminiAI.summarizeCodeBlock(chunk.text, chunk.lang);
-        } else {
-          chunk.spokenText = `Code block in ${chunk.lang || 'code'}.`;
+          summary = await GeminiAI.summarizeCodeBlock(chunk.text, chunk.lang);
         }
+        if (!this.isPlaying) return; // User stopped while awaiting AI
+        chunk.spokenText = summary || `Code snippet${chunk.lang ? ' in ' + chunk.lang : ''} shown on screen.`;
       }
       textToSpeak = chunk.spokenText;
     }
+
+    // 2. FIGURE / DIAGRAM -> Gemini Vision Narration or Caption
+    else if (chunk.type === 'figure') {
+      if (!this.figureNarrationEnabled) {
+        this.currentIndex++;
+        this._speakChunk(this.currentIndex);
+        return;
+      }
+
+      if (!chunk.spokenText) {
+        let visionDesc = null;
+        if (typeof GeminiAI !== 'undefined' && typeof MarkdownBuilder !== 'undefined' && chunk.imgEl) {
+          const status = await GeminiAI.isAvailable();
+          if (status.mode === 'cloud') {
+            if (this.onStatusMessage) this.onStatusMessage('Describing figure...');
+            const src = chunk.imgEl.src || chunk.imgEl.getAttribute('src') || '';
+            const dataUrl = src.startsWith('data:image/')
+              ? src
+              : await MarkdownBuilder.captureImageAsDataUrl(new URL(src, window.location.href).href, chunk.imgEl);
+            if (dataUrl) {
+              visionDesc = await GeminiAI.describeFigure(dataUrl, chunk.caption);
+            }
+          }
+        }
+        if (!this.isPlaying) return;
+        chunk.spokenText = visionDesc
+          ? `${chunk.caption}. ${visionDesc}`
+          : `Figure: ${chunk.caption}.`;
+      }
+      textToSpeak = chunk.spokenText;
+    }
+
+    // 3. TABLE -> Gemini Table Summary or Clean Structured Row Reading
+    else if (chunk.type === 'table') {
+      if (!chunk.spokenText) {
+        let tableSummary = null;
+        if (typeof GeminiAI !== 'undefined' && chunk.rawTableText) {
+          const status = await GeminiAI.isAvailable();
+          if (status.available) {
+            if (this.onStatusMessage) this.onStatusMessage('Summarizing table...');
+            tableSummary = await GeminiAI.summarizeTable(chunk.rawTableText);
+          }
+        }
+        if (!this.isPlaying) return;
+        chunk.spokenText = tableSummary || chunk.text;
+      }
+      textToSpeak = chunk.spokenText;
+    }
+
+    if (!this.isPlaying) return;
 
     this.currentUtterance = new SpeechSynthesisUtterance(textToSpeak);
     if (this.selectedVoice) {
@@ -198,9 +290,6 @@ class AudioPlayer {
     }
     this.currentUtterance.rate = this.rate;
     this.currentUtterance.pitch = this.pitch;
-
-    this._highlightElement(chunk.element);
-    this._notifyProgress();
 
     this.currentUtterance.onend = () => {
       if (!this.isPlaying) return;

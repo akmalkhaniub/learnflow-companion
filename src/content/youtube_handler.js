@@ -1,6 +1,7 @@
 /**
  * YouTubeHandler - Extracts video metadata, captures keyframe screenshots via HTML5 Canvas,
- * extracts transcript/script, and formats into a rich, self-contained study guide.
+ * extracts transcript/script, and formats into a clean, readable Markdown study guide
+ * with separate image assets (zero base64 gibberish in the .md file).
  */
 class YouTubeHandler {
   static isYouTube() {
@@ -30,9 +31,6 @@ class YouTubeHandler {
     }
   }
 
-  /**
-   * Formats seconds into MM:SS or HH:MM:SS
-   */
   static formatTime(seconds) {
     const s = Math.floor(seconds || 0);
     const hrs = Math.floor(s / 3600);
@@ -48,15 +46,12 @@ class YouTubeHandler {
    * Attempt to extract transcript lines from YouTube's transcript panel
    */
   static async extractTranscript() {
-    // If transcript panel is not open, attempt to click the "Show transcript" button
     let segments = document.querySelectorAll('ytd-transcript-segment-renderer');
-    
+
     if (!segments.length) {
-      // Look for transcript button
       const transcriptBtn = document.querySelector('button[aria-label*="transcript" i], #description ytd-video-description-transcript-section-renderer button');
       if (transcriptBtn) {
         transcriptBtn.click();
-        // Wait 1.2s for transcript DOM to render
         await new Promise(r => setTimeout(r, 1200));
         segments = document.querySelectorAll('ytd-transcript-segment-renderer');
       }
@@ -82,19 +77,23 @@ class YouTubeHandler {
   }
 
   /**
-   * Build a complete Markdown study archive for the current video,
-   * combining transcript script segments and screenshots.
+   * Build a clean Markdown study archive for the current video,
+   * returning separate image assets so the .md file has zero base64 clutter.
    */
   static async buildVideoStudyGuide(includeCurrentScreenshot = true) {
     const video = document.querySelector('video');
     const currentTime = video ? video.currentTime : 0;
     const formattedCurrentTime = this.formatTime(currentTime);
+    const safeTimeSlug = formattedCurrentTime.replace(/:/g, '-');
 
     const titleEl = document.querySelector('h1.ytd-watch-metadata, #title h1');
     const channelEl = document.querySelector('#owner #channel-name, ytd-channel-name a');
     const title = titleEl ? titleEl.textContent.trim() : document.title.replace(' - YouTube', '');
     const channel = channelEl ? channelEl.textContent.trim() : 'Unknown Creator';
     const url = window.location.href;
+    const videoId = new URLSearchParams(window.location.search).get('v') || 'video';
+
+    const images = [];
 
     let md = `# 🎬 ${title}\n\n`;
     md += `**Channel:** ${channel}\n`;
@@ -102,28 +101,32 @@ class YouTubeHandler {
     md += `**Captured At:** ${new Date().toLocaleString()} (Playback: ${formattedCurrentTime})\n\n`;
     md += `---\n\n`;
 
-    // Capture screenshot of current frame
     if (includeCurrentScreenshot) {
       const screenshot = this.captureVideoScreenshot();
       if (screenshot) {
+        const imgFilename = `yt_${videoId}_${safeTimeSlug}.jpg`;
+        images.push({
+          filename: imgFilename,
+          dataUrl: screenshot,
+          alt: `Keyframe at ${formattedCurrentTime}`
+        });
         md += `## 📸 Video Screenshot [${formattedCurrentTime}]\n\n`;
-        md += `![Keyframe at ${formattedCurrentTime}](${screenshot})\n\n`;
+        md += `![Keyframe at ${formattedCurrentTime}](images/${imgFilename})\n\n`;
       }
     }
 
-    // Try extracting transcript
     md += `## 📝 Video Transcript & Notes\n\n`;
     const transcript = await this.extractTranscript();
 
     if (transcript && transcript.length) {
-      let currentSectionTime = '';
       let buffer = [];
+      let blockStartTime = transcript[0]?.time || '00:00';
 
       transcript.forEach((item, idx) => {
+        if (buffer.length === 0) blockStartTime = item.time;
         buffer.push(item.text);
-        // Group every 6 transcript lines into a paragraph
         if ((idx + 1) % 6 === 0 || idx === transcript.length - 1) {
-          md += `> **[${item.time}]** ${buffer.join(' ')}\n\n`;
+          md += `> **[${blockStartTime}]** ${buffer.join(' ')}\n\n`;
           buffer = [];
         }
       });
@@ -140,7 +143,8 @@ class YouTubeHandler {
       channel,
       category: 'YouTube',
       url,
-      markdown: md
+      markdown: md,
+      images
     };
   }
 }
