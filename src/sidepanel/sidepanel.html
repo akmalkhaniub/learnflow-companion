@@ -15,7 +15,7 @@
       </div>
     </div>
     <div class="header-actions" style="display: flex; gap: 6px; align-items: center;">
-      <button class="theme-toggle-btn" id="btn-toggle-page-player" title="Show / Hide Player Bar on this tab">🎧 Player</button>
+      <button class="primary-btn" id="btn-toggle-page-player" style="padding: 4px 10px; font-size: 11px; border-radius: 9999px;" title="Open or hide the floating reader bar on this tab">▶ Read Page</button>
       <button class="theme-toggle-btn" id="btn-theme-toggle" title="Switch Light / Dark Mode">🌙 Dark</button>
     </div>
   </header>
@@ -34,6 +34,19 @@
     <div class="context-banner" id="gemini-active-tab-banner">
       <span class="context-icon">🌐</span>
       <span class="context-title" id="active-tab-title">Detecting active page...</span>
+    </div>
+
+    <!-- Inline API Key Setup Banner (shown automatically until user adds key or Nano is active) -->
+    <div class="settings-card" id="gemini-setup-banner" style="display: none; border-color: var(--border-hover); background: var(--accent-soft);">
+      <div style="font-weight: 700; font-size: 12px; margin-bottom: 4px;">🔑 Setup Ask Gemini (Free)</div>
+      <div class="setting-desc" style="margin-bottom: 8px;">
+        1. Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank" class="accent-link"><b>Google AI Studio ↗</b></a><br>
+        2. Paste it below to unlock summaries, Code AI &amp; Figure Vision:
+      </div>
+      <div class="gemini-input-row">
+        <input type="password" id="inline-gemini-key" class="text-input" placeholder="Paste Gemini API key (AIza...)">
+        <button class="primary-btn" id="btn-inline-save-gemini">Enable</button>
+      </div>
     </div>
 
     <!-- Quick action chips -->
@@ -174,7 +187,7 @@
 
       <div class="form-group">
         <label>Default Speed Rate: <b id="speed-slider-label">1.0x</b></label>
-        <input type="range" id="setting-speed-slider" min="0.8" max="2.2" step="0.1" value="1.0" style="width: 100%;">
+        <input type="range" id="setting-speed-slider" min="0.7" max="1.6" step="0.05" value="1.0" style="width: 100%;">
       </div>
 
       <div class="form-group">

@@ -86,9 +86,10 @@ class AutoNavigator {
       return false;
     }
 
-    // Save state so next page auto-starts reading
+    // Save state so next page on the same site auto-starts reading
     await chrome.storage.local.set({
       learnflow_auto_play_next: true,
+      learnflow_auto_play_origin: window.location.origin,
       learnflow_last_navigated: Date.now()
     });
 
@@ -112,12 +113,12 @@ class AutoNavigator {
    * Check if we arrived here via auto-advance and should resume playing
    */
   static async checkAutoResume() {
-    const data = await chrome.storage.local.get(['learnflow_auto_play_next', 'learnflow_last_navigated']);
-    // Only honour a fresh flag (prevents unrelated tabs from stealing/consuming it)
+    const data = await chrome.storage.local.get(['learnflow_auto_play_next', 'learnflow_auto_play_origin', 'learnflow_last_navigated']);
+    // Only honour a fresh flag for the same site origin
     const fresh = data.learnflow_last_navigated && (Date.now() - data.learnflow_last_navigated) < 30000;
-    if (data.learnflow_auto_play_next && fresh) {
-      // Clear flag once consumed
-      await chrome.storage.local.set({ learnflow_auto_play_next: false });
+    const sameOrigin = !data.learnflow_auto_play_origin || data.learnflow_auto_play_origin === window.location.origin;
+    if (data.learnflow_auto_play_next && fresh && sameOrigin) {
+      await chrome.storage.local.set({ learnflow_auto_play_next: false, learnflow_auto_play_origin: null });
       return true;
     }
     return false;

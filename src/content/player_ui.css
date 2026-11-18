@@ -75,6 +75,17 @@
   background-color: transparent !important;
 }
 
+/* Native CSS Custom Highlight API for zero-DOM-mutation sentence & word-by-word karaoke */
+::highlight(learnflow-sentence) {
+  background-color: rgba(254, 240, 138, 0.55);
+  color: inherit;
+}
+
+::highlight(learnflow-word) {
+  background-color: #f59e0b;
+  color: #0f172a;
+}
+
 /* Root positioning container */
 #learnflow-player-root {
   position: fixed;
@@ -160,6 +171,12 @@
   border-bottom: none;
   padding: 5px 12px;
   cursor: default;
+}
+
+/* Rotate Up/Down step arrows to Left/Right when bar is horizontal */
+#learnflow-player-root.dock-bottom .lf-step-btn svg,
+#learnflow-player-root:not(.dock-right):not(.dock-left) .lf-step-btn svg {
+  transform: rotate(-90deg);
 }
 
 /* Minimized state -> tiny unobtrusive handle */

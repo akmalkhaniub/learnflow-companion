@@ -15,12 +15,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   await initTheme();
 
   // Toggle Player Bar on active tab
-  document.getElementById('btn-toggle-page-player')?.addEventListener('click', async () => {
+  const togglePlayerBtn = document.getElementById('btn-toggle-page-player');
+  togglePlayerBtn?.addEventListener('click', async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id) {
-      chrome.tabs.sendMessage(tab.id, { action: 'TOGGLE_PLAYER' }, () => {
+      chrome.tabs.sendMessage(tab.id, { action: 'TOGGLE_PLAYER' }, (resp) => {
         if (chrome.runtime.lastError) {
-          alert('Refresh this tab once to use the LearnFlow player here.');
+          alert('Refresh this tab once to use the LearnFlow reader here.');
+        } else if (resp && typeof resp.visible === 'boolean') {
+          togglePlayerBtn.textContent = resp.visible ? '✕ Hide Reader' : '▶ Read Page';
         }
       });
     }
@@ -134,7 +137,29 @@ async function detectActiveTab() {
 /**
  * Handle Ask Gemini Tab
  */
-function initGeminiTab() {
+async function initGeminiTab() {
+  const setupBanner = document.getElementById('gemini-setup-banner');
+  const inlineKeyInput = document.getElementById('inline-gemini-key');
+  const inlineSaveBtn = document.getElementById('btn-inline-save-gemini');
+
+  const refreshSetupBanner = async () => {
+    const status = await GeminiAI.isAvailable();
+    if (setupBanner) {
+      setupBanner.style.display = status.available ? 'none' : 'block';
+    }
+  };
+  await refreshSetupBanner();
+
+  inlineSaveBtn?.addEventListener('click', async () => {
+    const key = (inlineKeyInput?.value || '').trim();
+    if (!key) return;
+    await chrome.storage.local.set({ gemini_api_key: key });
+    const settingsInput = document.getElementById('setting-gemini-key');
+    if (settingsInput) settingsInput.value = key;
+    await refreshSetupBanner();
+    const responseBox = document.getElementById('gemini-response-box');
+    if (responseBox) responseBox.innerHTML = '<span style="color: var(--success); font-weight: 600;">✓ Gemini AI enabled! Click any chip above or ask a question below.</span>';
+  });
   const queryInput = document.getElementById('gemini-user-prompt');
   const sendBtn = document.getElementById('btn-send-gemini-query');
   const responseBox = document.getElementById('gemini-response-box');

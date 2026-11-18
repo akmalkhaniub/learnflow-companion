@@ -177,7 +177,7 @@ class AudioPlayer {
   }
 
   setRate(newRate) {
-    this.rate = Math.max(0.5, Math.min(2.5, newRate));
+    this.rate = Math.max(0.6, Math.min(1.6, newRate));
     if (this.isPlaying) {
       this.synth.cancel();
       this._speakChunk(this.currentIndex);
@@ -313,6 +313,13 @@ class AudioPlayer {
     this.currentUtterance.rate = this.rate;
     this.currentUtterance.pitch = this.pitch;
 
+    this.currentUtterance.onboundary = (event) => {
+      if (!this.isPlaying || chunk.type !== 'text' || !chunk.element) return;
+      if (event.name === 'word') {
+        this._highlightWord(chunk.element, textToSpeak, event.charIndex, event.charLength);
+      }
+    };
+
     this.currentUtterance.onend = () => {
       if (!this.isPlaying) return;
       this.currentIndex++;
@@ -376,10 +383,77 @@ class AudioPlayer {
     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  /**
+   * Real-time word-by-word karaoke highlighting using Chrome's CSS Custom Highlight API
+   * (zero DOM mutation, safe for React/O'Reilly pages).
+   */
+  _highlightWord(element, sentenceText, charIndex, charLength) {
+    if (typeof CSS === 'undefined' || !CSS.highlights || !element) return;
+
+    try {
+      // Build flat text map of all text nodes inside element
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      let fullText = '';
+      let n;
+      while ((n = walker.nextNode())) {
+        if (!n.nodeValue) continue;
+        nodes.push({ node: n, start: fullText.length, end: fullText.length + n.nodeValue.length });
+        fullText += n.nodeValue;
+      }
+      if (!nodes.length) return;
+
+      // Locate the sentence inside the paragraph
+      const prefix = sentenceText.slice(0, Math.min(24, sentenceText.length)).replace(/\s+/g, ' ').trim();
+      let sentOffset = fullText.indexOf(prefix);
+      if (sentOffset === -1) {
+        // Fallback: case-insensitive first-word match near start
+        sentOffset = 0;
+      }
+
+      const wordStart = sentOffset + charIndex;
+      let wordLen = charLength;
+      if (!wordLen || wordLen <= 0) {
+        const tail = sentenceText.slice(charIndex);
+        const m = tail.match(/^\S+/);
+        wordLen = m ? m[0].length : 1;
+      }
+      const wordEnd = Math.min(fullText.length, wordStart + wordLen);
+      if (wordStart < 0 || wordStart >= fullText.length || wordEnd <= wordStart) return;
+
+      const makeRange = (startIdx, endIdx) => {
+        const range = document.createRange();
+        let startSet = false;
+        for (const item of nodes) {
+          if (!startSet && startIdx >= item.start && startIdx <= item.end) {
+            range.setStart(item.node, startIdx - item.start);
+            startSet = true;
+          }
+          if (startSet && endIdx >= item.start && endIdx <= item.end) {
+            range.setEnd(item.node, endIdx - item.start);
+            return range;
+          }
+        }
+        return null;
+      };
+
+      const wordRange = makeRange(wordStart, wordEnd);
+      if (wordRange) {
+        CSS.highlights.set('learnflow-word', new Highlight(wordRange));
+      }
+    } catch {
+      // Ignore range edge cases gracefully
+    }
+  }
+
   _clearHighlight() {
     document.querySelectorAll('.learnflow-active-reading').forEach(el => {
       el.classList.remove('learnflow-active-reading');
     });
+    if (typeof CSS !== 'undefined' && CSS.highlights) {
+      CSS.highlights.delete('learnflow-word');
+      CSS.highlights.delete('learnflow-sentence');
+    }
   }
 
   _startKeepAlive() {

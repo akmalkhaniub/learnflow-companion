@@ -138,6 +138,8 @@ def run_tests():
             time.sleep(0.5)
 
             assert not sp.locator("body").evaluate("el => el.classList.contains('dark-theme')"), "Side panel should default to Light Mode!"
+            assert sp.locator("#gemini-setup-banner").is_visible(), "Inline Gemini API setup banner should be visible when unconfigured!"
+            assert sp.locator("#btn-toggle-page-player").inner_text().strip() == "▶ Read Page", "Read Page button should have clear label!"
             sp.locator("#btn-theme-toggle").click()
             assert sp.locator("body").evaluate("el => el.classList.contains('dark-theme')"), "Theme toggle should switch to Dark Mode!"
             sp.locator("#btn-theme-toggle").click()

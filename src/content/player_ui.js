@@ -58,12 +58,13 @@ class PlayerUI {
         <div class="lf-pop-row">
           <span class="lf-pop-label">Speed</span>
           <select class="lf-pop-select" id="lf-speed-select">
-            <option value="0.8">0.8x</option>
-            <option value="1.0" selected>1.0x</option>
+            <option value="0.75">0.75x</option>
+            <option value="0.9">0.9x</option>
+            <option value="1.0" selected>1.0x (Normal)</option>
+            <option value="1.1">1.1x</option>
             <option value="1.25">1.25x</option>
+            <option value="1.4">1.4x</option>
             <option value="1.5">1.5x</option>
-            <option value="1.75">1.75x</option>
-            <option value="2.0">2.0x</option>
           </select>
         </div>
 
@@ -127,11 +128,11 @@ class PlayerUI {
 
         <span class="lf-mini-progress" id="lf-progress-text" title="Reading progress">0%</span>
 
-        <button class="learnflow-btn" id="lf-btn-prev" title="Previous">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+        <button class="learnflow-btn lf-step-btn" id="lf-btn-prev" title="Previous sentence (Back)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
         </button>
-        <button class="learnflow-btn" id="lf-btn-next" title="Next">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+        <button class="learnflow-btn lf-step-btn" id="lf-btn-next" title="Next sentence (Forward)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
         </button>
         <button class="learnflow-btn lf-gemini-btn" id="lf-btn-gemini" title="Ask Gemini: 2-Min Audio Brief (Alt+G)">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"></path></svg>
@@ -447,10 +448,14 @@ class PlayerUI {
     ]);
 
     if (data.learnflow_preferred_rate) {
+      const clamped = Math.min(1.5, Math.max(0.75, parseFloat(data.learnflow_preferred_rate)));
       const select = this.root.querySelector('#lf-speed-select');
       if (select) {
-        select.value = data.learnflow_preferred_rate.toString();
-        this.audioPlayer.setRate(data.learnflow_preferred_rate);
+        // Pick closest option in dropdown
+        const opts = Array.from(select.options).map(o => parseFloat(o.value));
+        const closest = opts.reduce((a, b) => Math.abs(b - clamped) < Math.abs(a - clamped) ? b : a);
+        select.value = closest.toString();
+        this.audioPlayer.setRate(clamped);
       }
     }
 
