@@ -53,10 +53,13 @@ class AudioPlayer {
         }
       }
 
-      const preferred = voices.find(v =>
-        v.lang.startsWith('en') &&
-        (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Online') || v.name.includes('Neural'))
-      ) || voices.find(v => v.lang.startsWith('en')) || voices[0];
+      // Prefer fast, zero-latency local OS voices first to prevent network gaps/dropouts;
+      // fall back to natural/online voices if no local English voice exists.
+      const preferred =
+        voices.find(v => v.lang.startsWith('en') && v.localService && (v.name.includes('Natural') || v.name.includes('Zira') || v.name.includes('David') || v.name.includes('Mark') || v.name.includes('Samantha'))) ||
+        voices.find(v => v.lang.startsWith('en') && v.localService) ||
+        voices.find(v => v.lang.startsWith('en')) ||
+        voices[0];
 
       this.selectedVoice = preferred;
     };
@@ -300,6 +303,9 @@ class AudioPlayer {
 
     if (!this.isPlaying) return;
 
+    // Pre-fetch Gemini summaries for the next 2 upcoming code/figure/table chunks in background
+    this._prefetchUpcoming(index);
+
     this.currentUtterance = new SpeechSynthesisUtterance(textToSpeak);
     if (this.selectedVoice) {
       this.currentUtterance.voice = this.selectedVoice;
@@ -323,6 +329,43 @@ class AudioPlayer {
     // Keep a strong reference (Chrome GC can drop utterances and silently stop playback)
     window.__lfUtterance = this.currentUtterance;
     this.synth.speak(this.currentUtterance);
+  }
+
+  /**
+   * Background-prefetch AI narration for upcoming code/figure/table chunks
+   * so there is zero pause/gap when playback reaches them.
+   */
+  _prefetchUpcoming(currentIndex) {
+    if (typeof GeminiAI === 'undefined') return;
+    for (let offset = 1; offset <= 2; offset++) {
+      const nextChunk = this.chunks[currentIndex + offset];
+      if (!nextChunk || nextChunk.spokenText || nextChunk._prefetching) continue;
+
+      if (nextChunk.type === 'code' && this.codeWhispererEnabled) {
+        nextChunk._prefetching = true;
+        GeminiAI.summarizeCodeBlock(nextChunk.text, nextChunk.lang)
+          .then(s => { if (s) nextChunk.spokenText = s; })
+          .catch(() => {});
+      } else if (nextChunk.type === 'table' && nextChunk.rawTableText) {
+        nextChunk._prefetching = true;
+        GeminiAI.summarizeTable(nextChunk.rawTableText)
+          .then(s => { if (s) nextChunk.spokenText = s; })
+          .catch(() => {});
+      } else if (nextChunk.type === 'figure' && this.figureNarrationEnabled && nextChunk.imgEl && typeof MarkdownBuilder !== 'undefined') {
+        nextChunk._prefetching = true;
+        GeminiAI.isAvailable().then(async (status) => {
+          if (status.mode !== 'cloud') return;
+          const src = nextChunk.imgEl.src || nextChunk.imgEl.getAttribute('src') || '';
+          const dataUrl = src.startsWith('data:image/')
+            ? src
+            : await MarkdownBuilder.captureImageAsDataUrl(new URL(src, window.location.href).href, nextChunk.imgEl);
+          if (dataUrl) {
+            const desc = await GeminiAI.describeFigure(dataUrl, nextChunk.caption);
+            if (desc) nextChunk.spokenText = `${nextChunk.caption}. ${desc}`;
+          }
+        }).catch(() => {});
+      }
+    }
   }
 
   _highlightElement(element) {

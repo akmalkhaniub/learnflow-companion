@@ -63,13 +63,16 @@
   background: #2563eb;
 }
 
-/* Karaoke-style sentence/figure highlighting */
+/* High-contrast active reading highlight (works over O'Reilly spans & overflow:hidden) */
 .learnflow-active-reading {
-  background-color: var(--lf-highlight) !important;
-  outline: 2px solid var(--lf-highlight-border) !important;
-  outline-offset: 2px !important;
+  background-color: rgba(250, 204, 21, 0.38) !important;
+  box-shadow: inset 4px 0 0 #d97706, 0 0 0 2px rgba(250, 204, 21, 0.28) !important;
   border-radius: 4px !important;
-  transition: background-color 0.2s ease, outline-color 0.2s ease !important;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.learnflow-active-reading *:not(pre):not(code) {
+  background-color: transparent !important;
 }
 
 /* Root positioning container */

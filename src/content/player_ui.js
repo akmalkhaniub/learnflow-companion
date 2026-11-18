@@ -112,7 +112,9 @@ class PlayerUI {
       </div>
 
       <div class="learnflow-bar" id="lf-main-bar" title="LearnFlow Player (Drag when floating)">
-        <button class="learnflow-btn" id="lf-btn-minimize" title="Collapse / Expand">🎧</button>
+        <button class="learnflow-btn lf-collapse-btn" id="lf-btn-minimize" title="Collapse">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
         <button class="learnflow-btn learnflow-btn-primary" id="lf-btn-play" title="Play / Pause (Alt+L)">▶</button>
 
         <div class="lf-equalizer" id="lf-sound-equalizer" title="Speaking">
@@ -189,12 +191,21 @@ class PlayerUI {
       }
     });
 
-    // Minimize / Expand
+    // Minimize / Expand with standard chevron orientation
+    const updateCollapseIcon = () => {
+      const collapsed = bar.classList.contains('minimized');
+      minimizeBtn.title = collapsed ? 'Expand LearnFlow' : 'Collapse';
+      minimizeBtn.innerHTML = collapsed
+        ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>'
+        : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
+    };
+
     minimizeBtn.addEventListener('click', () => {
       bar.classList.toggle('minimized');
       if (bar.classList.contains('minimized')) {
         popover.classList.remove('open');
       }
+      updateCollapseIcon();
     });
 
     // Speed
@@ -307,7 +318,9 @@ class PlayerUI {
       </div>
 
       <div class="learnflow-bar" id="lf-main-bar" title="YouTube Companion">
-        <button class="learnflow-btn" id="lf-btn-minimize" title="Collapse / Expand">🎬</button>
+        <button class="learnflow-btn lf-collapse-btn" id="lf-btn-minimize" title="Collapse">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
         <button class="learnflow-btn learnflow-btn-primary" id="lf-yt-snapshot" title="Capture video screenshot + transcript">📸</button>
         <button class="learnflow-btn lf-gemini-btn" id="lf-yt-gemini" title="✨ Ask Gemini to summarize this video">✨</button>
         <button class="learnflow-btn" id="lf-yt-add-queue" title="➕ Add video to Playlist Queue">➕</button>
