@@ -92,6 +92,22 @@ class AudioPlayer {
     return true;
   }
 
+  /**
+   * Move to a saved position without speaking (used to restore reading progress)
+   */
+  seekTo(index) {
+    if (!this.chunks.length) return;
+    this.currentIndex = Math.max(0, Math.min(index, this.chunks.length - 1));
+    this._highlightElement(this.chunks[this.currentIndex]?.element);
+    if (this.onProgress) {
+      this.onProgress({
+        current: this.currentIndex + 1,
+        total: this.chunks.length,
+        percent: Math.round(((this.currentIndex + 1) / this.chunks.length) * 100)
+      });
+    }
+  }
+
   play() {
     if (!this.chunks.length) return;
 
@@ -298,12 +314,14 @@ class AudioPlayer {
     };
 
     this.currentUtterance.onerror = (e) => {
-      if (e.error !== 'interrupted' && e.error !== 'canceled') {
-        this.currentIndex++;
-        this._speakChunk(this.currentIndex);
-      }
+      if (e.error === 'interrupted' || e.error === 'canceled') return;
+      console.warn('[LearnFlow TTS] error, skipping segment:', e.error);
+      this.currentIndex++;
+      this._speakChunk(this.currentIndex);
     };
 
+    // Keep a strong reference (Chrome GC can drop utterances and silently stop playback)
+    window.__lfUtterance = this.currentUtterance;
     this.synth.speak(this.currentUtterance);
   }
 
@@ -323,12 +341,16 @@ class AudioPlayer {
 
   _startKeepAlive() {
     this._stopKeepAlive();
+    // Chromium bug: only REMOTE (cloud "Google ...") voices silently stop after ~15s.
+    // Pausing/resuming LOCAL voices (Microsoft/OS) actually kills them mid-sentence,
+    // which was causing the "audio stops automatically" issue — so only apply to remote voices.
+    if (this.selectedVoice && this.selectedVoice.localService) return;
     this.keepAliveTimer = setInterval(() => {
-      if (this.isPlaying && !this.isPaused) {
+      if (this.isPlaying && !this.isPaused && this.synth.speaking) {
         this.synth.pause();
         this.synth.resume();
       }
-    }, 10000);
+    }, 12000);
   }
 
   _stopKeepAlive() {
@@ -349,6 +371,7 @@ class AudioPlayer {
   }
 
   _notifyProgress() {
+    if (this.onChunkStart) this.onChunkStart(this.currentIndex, this.chunks[this.currentIndex]);
     if (this.onProgress) {
       this.onProgress({
         current: this.currentIndex + 1,

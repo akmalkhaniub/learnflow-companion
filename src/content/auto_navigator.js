@@ -21,7 +21,8 @@ class AutoNavigator {
         'a[href*="/read/"][class*="next"]'
       ];
       for (const sel of selectors) {
-        const el = document.querySelector(sel);
+        let el = null;
+        try { el = document.querySelector(sel); } catch { el = null; }
         if (el && this._isVisible(el)) return el;
       }
     }
@@ -32,11 +33,10 @@ class AutoNavigator {
         'button[aria-label*="Next"]',
         'a.next-step',
         '.lab-content__next',
-        'button:has(span:contains("Next"))',
-        'button:has(span:contains("Continue"))'
       ];
       for (const sel of selectors) {
-        const el = document.querySelector(sel);
+        let el = null;
+        try { el = document.querySelector(sel); } catch { el = null; }
         if (el && this._isVisible(el)) return el;
       }
     }
@@ -113,7 +113,9 @@ class AutoNavigator {
    */
   static async checkAutoResume() {
     const data = await chrome.storage.local.get(['learnflow_auto_play_next', 'learnflow_last_navigated']);
-    if (data.learnflow_auto_play_next) {
+    // Only honour a fresh flag (prevents unrelated tabs from stealing/consuming it)
+    const fresh = data.learnflow_last_navigated && (Date.now() - data.learnflow_last_navigated) < 30000;
+    if (data.learnflow_auto_play_next && fresh) {
       // Clear flag once consumed
       await chrome.storage.local.set({ learnflow_auto_play_next: false });
       return true;

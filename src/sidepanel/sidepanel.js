@@ -14,6 +14,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 1. Initialize Light/Dark Theme (Defaults to Light Mode)
   await initTheme();
 
+  // Toggle Player Bar on active tab
+  document.getElementById('btn-toggle-page-player')?.addEventListener('click', async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) {
+      chrome.tabs.sendMessage(tab.id, { action: 'TOGGLE_PLAYER' }, () => {
+        if (chrome.runtime.lastError) {
+          alert('Refresh this tab once to use the LearnFlow player here.');
+        }
+      });
+    }
+  });
+
   // 2. Tab Navigation
   const tabButtons = document.querySelectorAll('.tab-btn');
   const tabContents = document.querySelectorAll('.tab-content');

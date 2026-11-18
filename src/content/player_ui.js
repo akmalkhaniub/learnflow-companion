@@ -10,6 +10,8 @@ class PlayerUI {
     this.onGeminiBriefRequest = handlers.onGeminiBriefRequest || null;
     this.onAddToQueueRequest = handlers.onAddToQueueRequest || null;
     this.onPlayRequest = handlers.onPlayRequest || null;
+    this.onRestartRequest = handlers.onRestartRequest || null;
+    this.onCloseRequest = handlers.onCloseRequest || null;
 
     this.root = null;
     this.autoAdvance = true;
@@ -32,6 +34,9 @@ class PlayerUI {
     }
 
     document.body.appendChild(this.root);
+    this.root.querySelector('#lf-btn-close')?.addEventListener('click', () => {
+      if (this.onCloseRequest) this.onCloseRequest();
+    });
     this._makeDraggable(this.root.querySelector('.learnflow-bar'));
     this._loadSettings();
   }
@@ -98,8 +103,9 @@ class PlayerUI {
         </div>
 
         <div class="lf-pop-actions">
+          <button class="lf-pop-action-btn" id="lf-btn-restart" title="Restart from top of page">↺ Top</button>
           <button class="lf-pop-action-btn" id="lf-btn-stop">⏹ Stop</button>
-          <button class="lf-pop-action-btn" id="lf-btn-pop-archive">💾 Archive</button>
+          <button class="lf-pop-action-btn" id="lf-btn-pop-archive">💾 Save</button>
         </div>
 
         <div class="lf-pop-hint">Tip: <b>Alt + Click</b> any paragraph to read from there</div>
@@ -122,6 +128,7 @@ class PlayerUI {
         <button class="learnflow-btn lf-gemini-btn" id="lf-btn-gemini" title="✨ Ask Gemini: 2-Min Audio Brief (Alt+G)">✨</button>
         <button class="learnflow-btn" id="lf-btn-archive" title="Save clean Markdown + Figures + Tables">💾</button>
         <button class="learnflow-btn" id="lf-btn-settings" title="Settings & Dock Options">⚙</button>
+        <button class="learnflow-btn lf-close-btn" id="lf-btn-close" title="Close reader on this page (Alt+L to reopen)">✕</button>
       </div>
     `;
 
@@ -160,6 +167,11 @@ class PlayerUI {
     stopBtn.addEventListener('click', () => {
       this.audioPlayer.stop();
       popover.classList.remove('open');
+    });
+
+    this.root.querySelector('#lf-btn-restart')?.addEventListener('click', () => {
+      popover.classList.remove('open');
+      if (this.onRestartRequest) this.onRestartRequest();
     });
 
     prevBtn.addEventListener('click', () => this.audioPlayer.previous());
@@ -300,6 +312,7 @@ class PlayerUI {
         <button class="learnflow-btn lf-gemini-btn" id="lf-yt-gemini" title="✨ Ask Gemini to summarize this video">✨</button>
         <button class="learnflow-btn" id="lf-yt-add-queue" title="➕ Add video to Playlist Queue">➕</button>
         <button class="learnflow-btn" id="lf-btn-settings" title="Dock Options">⚙</button>
+        <button class="learnflow-btn lf-close-btn" id="lf-btn-close" title="Close">✕</button>
       </div>
     `;
 
@@ -350,6 +363,15 @@ class PlayerUI {
     });
   }
 
+  destroy() {
+    if (this.root) this.root.remove();
+    this.root = null;
+  }
+
+  isVisible() {
+    return !!(this.root && document.body.contains(this.root));
+  }
+
   applyDockMode(mode) {
     this.dockMode = mode || 'dock-right';
     this.root.classList.remove('dock-right', 'dock-left', 'dock-bottom', 'float');
@@ -368,6 +390,7 @@ class PlayerUI {
   }
 
   showToast(message, duration = 2800) {
+    if (!this.root) return;
     const existing = this.root.querySelector('.learnflow-toast');
     if (existing) existing.remove();
 

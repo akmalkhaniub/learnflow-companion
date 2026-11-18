@@ -10,10 +10,68 @@
   let extractedData = null;
   let lastExtractedUrl = null;
 
+  const getCanonicalUrl = (u = window.location.href) => {
+    try {
+      const parsed = new URL(u);
+      return `${parsed.origin}${parsed.pathname}${parsed.search}`;
+    } catch {
+      return u;
+    }
+  };
+
+  const savePlayProgress = async (index, total) => {
+    if (!total || YouTubeHandler.isYouTubeHost()) return;
+    const key = getCanonicalUrl();
+    const data = await chrome.storage.local.get(['learnflow_play_progress']);
+    const map = data.learnflow_play_progress || {};
+    map[key] = {
+      index,
+      total,
+      percent: Math.round(((index + 1) / total) * 100),
+      title: document.title,
+      updatedAt: Date.now()
+    };
+    // Keep at most 200 recent page positions
+    const entries = Object.entries(map);
+    if (entries.length > 200) {
+      entries.sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
+      await chrome.storage.local.set({ learnflow_play_progress: Object.fromEntries(entries.slice(0, 200)) });
+    } else {
+      await chrome.storage.local.set({ learnflow_play_progress: map });
+    }
+  };
+
+  const clearPlayProgress = async () => {
+    const key = getCanonicalUrl();
+    const data = await chrome.storage.local.get(['learnflow_play_progress']);
+    const map = data.learnflow_play_progress || {};
+    if (map[key]) {
+      delete map[key];
+      await chrome.storage.local.set({ learnflow_play_progress: map });
+    }
+  };
+
+  const restorePlayProgress = async () => {
+    if (!audioPlayer.chunks.length || YouTubeHandler.isYouTubeHost()) return null;
+    const key = getCanonicalUrl();
+    const data = await chrome.storage.local.get(['learnflow_play_progress']);
+    const saved = (data.learnflow_play_progress || {})[key];
+    if (saved && saved.index > 0 && saved.index < audioPlayer.chunks.length - 1) {
+      audioPlayer.seekTo(saved.index);
+      return saved;
+    }
+    return null;
+  };
+
+  // Persist reading position whenever a new segment starts
+  audioPlayer.onChunkStart = (index) => {
+    savePlayProgress(index, audioPlayer.chunks.length);
+  };
+
   /**
    * Ensure fresh extraction of the main reading area (critical for O'Reilly/skills.google SPAs!)
    */
-  const ensureFreshExtraction = (force = false) => {
+  const ensureFreshExtraction = async (force = false) => {
     if (YouTubeHandler.isYouTubeHost()) return null;
 
     if (force || !extractedData || lastExtractedUrl !== window.location.href || !extractedData.chunks?.length) {
@@ -21,24 +79,42 @@
       lastExtractedUrl = window.location.href;
       if (extractedData.chunks && extractedData.chunks.length > 0) {
         audioPlayer.setQueue(extractedData.chunks);
+        await restorePlayProgress();
         console.log(`[LearnFlow] Extracted ${extractedData.chunks.length} main-content segments from:`, extractedData.title);
       }
     }
     return extractedData;
   };
 
-  // Play handler
-  const handlePlay = () => {
+  // Play handler (resumes from saved position if available!)
+  const handlePlay = async () => {
     if (audioPlayer.isPaused && lastExtractedUrl === window.location.href) {
       audioPlayer.play();
       return;
     }
-    const data = ensureFreshExtraction(lastExtractedUrl !== window.location.href || !audioPlayer.chunks.length);
+    const data = await ensureFreshExtraction(lastExtractedUrl !== window.location.href || !audioPlayer.chunks.length);
     if (!data || !data.chunks?.length) {
-      if (playerUI) playerUI.showToast('No readable content found on this page.');
+      if (playerUI.isVisible()) playerUI.showToast('No readable content found on this page.');
       return;
     }
+    if (audioPlayer.currentIndex === 0) {
+      const saved = await restorePlayProgress();
+      if (saved && playerUI.isVisible()) {
+        playerUI.showToast(`▶ Resuming from ${saved.percent}% (${saved.index + 1}/${saved.total})`);
+      }
+    } else if (playerUI.isVisible()) {
+      const pct = Math.round(((audioPlayer.currentIndex + 1) / audioPlayer.chunks.length) * 100);
+      playerUI.showToast(`▶ Resuming from ${pct}%`);
+    }
     audioPlayer.play();
+  };
+
+  const handleRestart = async () => {
+    await clearPlayProgress();
+    audioPlayer.stop();
+    await ensureFreshExtraction(false);
+    audioPlayer.play();
+    if (playerUI.isVisible()) playerUI.showToast('↺ Restarting from top');
   };
 
   // Archival function: clean Markdown + separate image files (ZERO inline base64 gibberish!)
@@ -72,7 +148,7 @@
           images: ytData.images || []
         };
       } else {
-        const data = ensureFreshExtraction(true);
+        const data = await ensureFreshExtraction(true);
 
         const chapterSlug = (data.chapterTitle || 'ch')
           .toLowerCase()
@@ -150,7 +226,7 @@
         const yt = await YouTubeHandler.buildVideoStudyGuide(false);
         rawText = yt.markdown;
       } else {
-        const data = ensureFreshExtraction(true);
+        const data = await ensureFreshExtraction(true);
         rawText = (data.contentEl.innerText || data.contentEl.textContent || '').trim().substring(0, 20000);
       }
 
@@ -213,17 +289,35 @@
     }
   };
 
-  // Instantiate Compact Dockable UI
+  // Instantiate Compact Dockable UI (on-demand — NOT auto-shown on every tab!)
   const playerUI = new PlayerUI(audioPlayer, {
     onArchiveRequest: handleArchive,
     onGeminiBriefRequest: handleGeminiBrief,
     onAddToQueueRequest: handleAddToQueue,
-    onPlayRequest: handlePlay
+    onPlayRequest: handlePlay,
+    onRestartRequest: handleRestart,
+    onCloseRequest: () => {
+      // Stop speech without wiping saved play progress, then remove bar
+      window.speechSynthesis.cancel();
+      audioPlayer.isPlaying = false;
+      audioPlayer.isPaused = false;
+      audioPlayer._stopKeepAlive();
+      audioPlayer._clearHighlight();
+      playerUI.destroy();
+    }
   });
-  playerUI.init();
+
+  const openPlayer = async () => {
+    if (!playerUI.isVisible()) {
+      playerUI.init();
+    }
+    if (!YouTubeHandler.isYouTubeHost()) {
+      await ensureFreshExtraction(lastExtractedUrl !== window.location.href || !audioPlayer.chunks.length);
+    }
+  };
 
   // Alt + Click on any paragraph/heading/figure to jump right there and start reading!
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
     if (!e.altKey || YouTubeHandler.isYouTubeHost()) return;
     if (e.target.closest('#learnflow-player-root')) return;
 
@@ -231,7 +325,7 @@
     if (!targetBlock) return;
 
     e.preventDefault();
-    ensureFreshExtraction(lastExtractedUrl !== window.location.href || !audioPlayer.chunks.length);
+    await openPlayer();
     const jumped = audioPlayer.jumpToElement(targetBlock);
     if (jumped) {
       playerUI.showToast('🎧 Reading from selected spot');
@@ -240,14 +334,10 @@
     }
   });
 
-  // Initial extraction (delayed slightly for SPA hydration)
   if (!YouTubeHandler.isYouTubeHost()) {
-    setTimeout(() => {
-      ensureFreshExtraction(false);
-    }, 900);
-
     audioPlayer.onComplete = async () => {
       console.log('[LearnFlow] Audio reached end of section.');
+      await clearPlayProgress();
       await handleArchive();
 
       const data = await chrome.storage.local.get(['learnflow_playlist']);
@@ -300,11 +390,13 @@
       setTimeout(reportCurrentVisit, 1500);
 
       const shouldResume = await AutoNavigator.checkAutoResume();
-      setTimeout(() => {
-        ensureFreshExtraction(true);
+      setTimeout(async () => {
         if (shouldResume && !YouTubeHandler.isYouTubeHost()) {
+          await openPlayer();
           playerUI.showToast('Auto-playing next chapter...');
           audioPlayer.play();
+        } else if (playerUI.isVisible()) {
+          await ensureFreshExtraction(true);
         }
       }, 1500);
     }
@@ -316,31 +408,52 @@
   // Check if we arrived here through full-page Auto-Advance
   const shouldAutoResume = await AutoNavigator.checkAutoResume();
   if (shouldAutoResume && !YouTubeHandler.isYouTubeHost()) {
-    setTimeout(() => {
-      ensureFreshExtraction(true);
+    setTimeout(async () => {
+      await openPlayer();
       playerUI.showToast('Auto-playing next chapter...');
       audioPlayer.play();
       handleArchive();
     }, 1500);
   }
 
-  // Listen for messages from background / shortcuts / context menus
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message.action === 'TOGGLE_PLAY') {
-      if (audioPlayer.isPlaying) {
-        audioPlayer.pause();
+  // Listen for messages from background / shortcuts / context menus / sidepanel
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'OPEN_PLAYER') {
+      openPlayer().then(() => sendResponse({ visible: true }));
+      return true;
+    } else if (message.action === 'TOGGLE_PLAYER') {
+      if (playerUI.isVisible()) {
+        window.speechSynthesis.cancel();
+        audioPlayer.isPlaying = false;
+        audioPlayer.isPaused = false;
+        audioPlayer._stopKeepAlive();
+        audioPlayer._clearHighlight();
+        playerUI.destroy();
+        sendResponse({ visible: false });
       } else {
-        handlePlay();
+        openPlayer().then(() => sendResponse({ visible: true }));
       }
+      return true;
+    } else if (message.action === 'TOGGLE_PLAY') {
+      (async () => {
+        await openPlayer();
+        if (audioPlayer.isPlaying) {
+          audioPlayer.pause();
+        } else {
+          handlePlay();
+        }
+      })();
     } else if (message.action === 'TRIGGER_GEMINI_AUDIO_BRIEF') {
-      handleGeminiBrief();
+      openPlayer().then(() => handleGeminiBrief());
     } else if (message.action === 'READ_TEXT_SNIPPET') {
       if (message.text) {
-        audioPlayer.setQueue([{ type: 'text', text: message.text, element: null }]);
-        audioPlayer.play();
+        openPlayer().then(() => {
+          audioPlayer.setQueue([{ type: 'text', text: message.text, element: null }]);
+          audioPlayer.play();
+        });
       }
     } else if (message.action === 'AUTO_START_READING') {
-      handlePlay();
+      openPlayer().then(() => handlePlay());
     }
   });
 })();

@@ -15,6 +15,12 @@ chrome.sidePanel
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
+      id: 'lf-open-player',
+      title: '🎧 Open / Toggle LearnFlow Player on this page',
+      contexts: ['page']
+    });
+
+    chrome.contextMenus.create({
       id: 'lf-read-selection',
       title: '🎧 Read aloud with LearnFlow',
       contexts: ['selection']
@@ -44,7 +50,9 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!tab?.id) return;
 
-  if (info.menuItemId === 'lf-read-selection') {
+  if (info.menuItemId === 'lf-open-player') {
+    chrome.tabs.sendMessage(tab.id, { action: 'TOGGLE_PLAYER' });
+  } else if (info.menuItemId === 'lf-read-selection') {
     chrome.tabs.sendMessage(tab.id, {
       action: 'READ_TEXT_SNIPPET',
       text: info.selectionText
