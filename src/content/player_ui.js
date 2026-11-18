@@ -186,7 +186,7 @@ class PlayerUI {
     });
 
     document.addEventListener('click', (e) => {
-      if (!this.root.contains(e.target)) {
+      if (this.root && !this.root.contains(e.target)) {
         popover.classList.remove('open');
       }
     });
@@ -357,7 +357,7 @@ class PlayerUI {
     });
 
     document.addEventListener('click', (e) => {
-      if (!this.root.contains(e.target)) {
+      if (this.root && !this.root.contains(e.target)) {
         popover.classList.remove('open');
       }
     });

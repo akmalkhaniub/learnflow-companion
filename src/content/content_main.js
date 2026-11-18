@@ -313,6 +313,13 @@
     }
     if (!YouTubeHandler.isYouTubeHost()) {
       await ensureFreshExtraction(lastExtractedUrl !== window.location.href || !audioPlayer.chunks.length);
+      if (audioPlayer.chunks.length > 0) {
+        if (audioPlayer.currentIndex === 0) {
+          await restorePlayProgress();
+        } else {
+          audioPlayer.seekTo(audioPlayer.currentIndex);
+        }
+      }
     }
   };
 
