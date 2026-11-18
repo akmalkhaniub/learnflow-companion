@@ -115,7 +115,9 @@ class PlayerUI {
         <button class="learnflow-btn lf-collapse-btn" id="lf-btn-minimize" title="Collapse">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
         </button>
-        <button class="learnflow-btn learnflow-btn-primary" id="lf-btn-play" title="Play / Pause (Alt+L)">▶</button>
+        <button class="learnflow-btn learnflow-btn-primary" id="lf-btn-play" title="Play / Pause (Alt+L)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+        </button>
 
         <div class="lf-equalizer" id="lf-sound-equalizer" title="Speaking">
           <div class="lf-bar-line"></div>
@@ -125,12 +127,24 @@ class PlayerUI {
 
         <span class="lf-mini-progress" id="lf-progress-text" title="Reading progress">0%</span>
 
-        <button class="learnflow-btn" id="lf-btn-prev" title="Previous">⏮</button>
-        <button class="learnflow-btn" id="lf-btn-next" title="Next">⏭</button>
-        <button class="learnflow-btn lf-gemini-btn" id="lf-btn-gemini" title="✨ Ask Gemini: 2-Min Audio Brief (Alt+G)">✨</button>
-        <button class="learnflow-btn" id="lf-btn-archive" title="Save clean Markdown + Figures + Tables">💾</button>
-        <button class="learnflow-btn" id="lf-btn-settings" title="Settings & Dock Options">⚙</button>
-        <button class="learnflow-btn lf-close-btn" id="lf-btn-close" title="Close reader on this page (Alt+L to reopen)">✕</button>
+        <button class="learnflow-btn" id="lf-btn-prev" title="Previous">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+        </button>
+        <button class="learnflow-btn" id="lf-btn-next" title="Next">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+        </button>
+        <button class="learnflow-btn lf-gemini-btn" id="lf-btn-gemini" title="Ask Gemini: 2-Min Audio Brief (Alt+G)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"></path></svg>
+        </button>
+        <button class="learnflow-btn" id="lf-btn-archive" title="Save clean Markdown + Figures + Tables">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+        </button>
+        <button class="learnflow-btn" id="lf-btn-settings" title="Settings & Dock Options">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        </button>
+        <button class="learnflow-btn lf-close-btn" id="lf-btn-close" title="Close reader on this page (Alt+L to reopen)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
       </div>
     `;
 
@@ -269,7 +283,9 @@ class PlayerUI {
 
     // AudioPlayer callbacks -> UI updates
     this.audioPlayer.onStateChange = (state) => {
-      playBtn.textContent = state.isPlaying ? '⏸' : '▶';
+      playBtn.innerHTML = state.isPlaying
+        ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>'
+        : '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>';
       if (equalizer) equalizer.classList.toggle('active', state.isPlaying);
       const popStatus = this.root.querySelector('#lf-pop-status');
       if (popStatus) popStatus.textContent = state.isPlaying ? 'Speaking...' : (state.isPaused ? 'Paused' : 'Ready');
