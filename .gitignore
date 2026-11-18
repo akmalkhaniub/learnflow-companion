@@ -22,3 +22,7 @@ dist/
 .vscode/
 *.swp
 *.swo
+
+# Browser review screenshots
+tests/artifacts/
+tests/__pycache__/

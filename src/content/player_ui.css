@@ -63,16 +63,9 @@
   background: #2563eb;
 }
 
-/* High-contrast active reading highlight (works over O'Reilly spans & overflow:hidden) */
-.learnflow-active-reading {
-  background-color: rgba(250, 204, 21, 0.38) !important;
-  box-shadow: inset 4px 0 0 #d97706, 0 0 0 2px rgba(250, 204, 21, 0.28) !important;
-  border-radius: 4px !important;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease !important;
-}
-
-.learnflow-active-reading *:not(pre):not(code) {
-  background-color: transparent !important;
+/* Highlight without inset stripes, padding changes, or overriding child backgrounds. */
+.learnflow-block-highlight {
+  background-color: rgba(250, 204, 21, 0.18) !important;
 }
 
 /* Native CSS Custom Highlight API for zero-DOM-mutation sentence & word-by-word karaoke */
@@ -528,3 +521,6 @@
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+#learnflow-player-root .lf-popover { max-height: min(80vh, 650px); overflow-y: auto; }
+#lf-navigation-status, #lf-figure-status { white-space: normal; overflow-wrap: anywhere; text-align: left; }

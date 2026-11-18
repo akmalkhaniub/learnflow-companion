@@ -12,6 +12,12 @@ class PlayerUI {
     this.onPlayRequest = handlers.onPlayRequest || null;
     this.onRestartRequest = handlers.onRestartRequest || null;
     this.onCloseRequest = handlers.onCloseRequest || null;
+    this.onReadHere = handlers.onReadHere;
+    this.onSection = handlers.onSection;
+    this.onNextPage = handlers.onNextPage;
+    this.onChooseNext = handlers.onChooseNext;
+    this.onExplainFigure = handlers.onExplainFigure;
+    this.followScroll = false;
 
     this.root = null;
     this.autoAdvance = true;
@@ -109,6 +115,19 @@ class PlayerUI {
           <button class="lf-pop-action-btn" id="lf-btn-pop-archive">💾 Save</button>
         </div>
 
+        <div class="lf-pop-actions">
+          <button class="lf-pop-action-btn" id="lf-read-here">Read from here</button>
+          <button class="lf-pop-action-btn" id="lf-section-prev">Previous section</button>
+          <button class="lf-pop-action-btn" id="lf-section-next">Next section</button>
+        </div>
+        <label class="lf-pop-hint"><input type="checkbox" id="lf-follow-scroll"> Follow my scroll (jump after scrolling)</label>
+        <div class="lf-pop-actions">
+          <button class="lf-pop-action-btn" id="lf-next-page">Next page now</button>
+          <button class="lf-pop-action-btn" id="lf-choose-next">Choose Next</button>
+        </div>
+        <p class="lf-pop-hint" id="lf-navigation-status" role="status"></p>
+        <button class="lf-pop-action-btn" id="lf-explain-figure">Explain visible figure / retry</button>
+        <p class="lf-pop-hint" id="lf-figure-status" role="status">Figure AI requires a Gemini API key.</p>
         <div class="lf-pop-hint">Tip: <b>Alt + Click</b> any paragraph to read from there</div>
       </div>
 
@@ -134,6 +153,7 @@ class PlayerUI {
         <button class="learnflow-btn lf-step-btn" id="lf-btn-next" title="Next sentence (Forward)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
         </button>
+        <button class="learnflow-btn" id="lf-read-here-quick" title="Read from the section currently visible">⌖</button>
         <button class="learnflow-btn lf-gemini-btn" id="lf-btn-gemini" title="Ask Gemini: 2-Min Audio Brief (Alt+G)">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"></path></svg>
         </button>
@@ -148,6 +168,19 @@ class PlayerUI {
         </button>
       </div>
     `;
+
+    this.root.querySelector('#lf-read-here-quick').addEventListener('click', () => this.onReadHere?.());
+    this.root.querySelector('#lf-read-here').addEventListener('click', () => this.onReadHere?.());
+    this.root.querySelector('#lf-section-prev').addEventListener('click', () => this.onSection?.(-1));
+    this.root.querySelector('#lf-section-next').addEventListener('click', () => this.onSection?.(1));
+    this.root.querySelector('#lf-next-page').addEventListener('click', () => this.onNextPage?.());
+    this.root.querySelector('#lf-choose-next').addEventListener('click', () => this.onChooseNext?.());
+    this.root.querySelector('#lf-explain-figure').addEventListener('click', () => this.onExplainFigure?.());
+    this.root.querySelector('#lf-follow-scroll').addEventListener('change', event => {
+      this.followScroll = event.target.checked;
+      chrome.storage.local.set({learnflow_follow_scroll: this.followScroll});
+    });
+    this.root.querySelector('#lf-navigation-status').textContent = AutoNavigator.status();
 
     // Element Refs
     const bar = this.root.querySelector('#lf-main-bar');
@@ -198,6 +231,7 @@ class PlayerUI {
     settingsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       popover.classList.toggle('open');
+      this.root.querySelector('#lf-navigation-status').textContent = AutoNavigator.status();
     });
 
     document.addEventListener('click', (e) => {
@@ -307,7 +341,8 @@ class PlayerUI {
     this.audioPlayer.onStatusMessage = (msg) => {
       const popStatus = this.root.querySelector('#lf-pop-status');
       if (popStatus) popStatus.textContent = msg;
-      this.showToast(msg, 2200);
+      if (/figure|caption|image/i.test(msg)) this.root.querySelector('#lf-figure-status').textContent = msg;
+      this.showToast(msg, 4000);
     };
 
     this.audioPlayer.onSleepTick = (remainingSec) => {
@@ -444,9 +479,12 @@ class PlayerUI {
       'learnflow_preferred_rate',
       'learnflow_auto_advance_enabled',
       'learnflow_dock_mode',
-      'learnflow_theme'
+      'learnflow_theme', 'learnflow_follow_scroll'
     ]);
 
+    this.followScroll = !!data.learnflow_follow_scroll;
+    const followToggle = this.root.querySelector('#lf-follow-scroll');
+    if (followToggle) followToggle.checked = this.followScroll;
     if (data.learnflow_preferred_rate) {
       const clamped = Math.min(1.5, Math.max(0.75, parseFloat(data.learnflow_preferred_rate)));
       const select = this.root.querySelector('#lf-speed-select');

@@ -533,3 +533,24 @@ h1 {
 .accent-link:hover {
   text-decoration: underline;
 }
+
+/* Resume-first home */
+.app-header { flex-wrap: wrap; gap: 10px; }
+.tabs-nav { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.tab-btn { min-width: 0; padding-inline: 2px; font-size: 11px; }
+.tabs-nav span { font-size: 10px; color: var(--text-muted); }
+@media (max-width: 420px) { .tabs-nav span { display: none; } }
+.home-heading { margin: 8px 0 20px; }
+.home-eyebrow { font-size: 10px; letter-spacing: .12em; color: var(--accent-text); font-weight: 700; }
+.home-heading h2 { font-size: 25px; letter-spacing: -.6px; margin: 5px 0; }
+.home-heading p, .home-detail { color: var(--text-muted); margin: 6px 0 12px; overflow-wrap: anywhere; }
+.resume-card { background: var(--bg-card); border: 1px solid var(--border-hover); border-radius: 16px; padding: 20px; box-shadow: var(--shadow-sm); }
+.resume-card h3 { font-size: 19px; line-height: 1.4; margin: 14px 0 5px; overflow-wrap: anywhere; }
+.resume-card progress { width: 100%; height: 8px; accent-color: var(--accent); margin: 10px 0 0; }
+.home-primary { display: block; width: 100%; padding: 12px; margin: 16px 0 10px; font-size: 14px; }
+button:disabled { opacity: .55; cursor: default; }
+.home-queue-heading { display: flex; align-items: center; justify-content: space-between; margin-top: 22px; }
+.home-queue-heading h3 { margin: 0; font-size: 15px; }
+.home-footer { border-top: 1px solid var(--border); padding-top: 18px; margin-top: 24px; color: var(--text-muted); font-size: 11px; }
+#home-status, .sync-error { color: var(--text-muted); overflow-wrap: anywhere; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }

@@ -8,7 +8,7 @@ LearnFlow is an open-source, privacy-first personal learning companion built for
 
 ## 1. Data Collection & Processing
 * **Local Processing:** All text-to-speech conversion, DOM extraction, and page readability parsing occur entirely on your local machine using standard browser APIs (`window.speechSynthesis`).
-* **No Telemetry or Tracking:** LearnFlow does not collect telemetry, track browsing behavior, or send personal browsing history to third-party analytic servers.
+* **No Telemetry or Tracking:** LearnFlow does not collect telemetry or send browsing history to analytics servers. It records learning history locally only when you use reading, briefing, selection playback, or archival features on a page. Unrelated browsing is not recorded. You can clear existing history from the History tab; records from earlier versions remain until you clear them.
 * **On-Device AI:** When Chrome's built-in **Gemini Nano** is used, all prompt execution, code summarization, and audio briefing happen 100% locally on your device without sending text across the internet.
 
 ---
@@ -21,7 +21,7 @@ LearnFlow is an open-source, privacy-first personal learning companion built for
 ---
 
 ## 3. Third-Party Services
-* **Google Gemini API (Optional):** If you choose to supply a Google Gemini API key, prompt queries and relevant document excerpts are sent directly to Google's official Gemini API endpoints for processing according to [Google's AI Terms of Service](https://ai.google.dev/terms).
+* **Google Gemini API (Optional):** If you choose to supply a Google Gemini API key, prompt queries, relevant document excerpts, and figure images (for figure explanations) are sent directly to Google's official Gemini API endpoints for processing according to [Google's AI Terms of Service](https://ai.google.dev/terms).
 
 ---
 
@@ -38,3 +38,5 @@ LearnFlow is an open-source, privacy-first personal learning companion built for
 ## 5. Contact & Open Source
 LearnFlow is free and open-source software. You can inspect the complete source code or report issues at:
 **[https://github.com/akmalkhaniub/learnflow-companion](https://github.com/akmalkhaniub/learnflow-companion)**
+
+LearnFlow requests stateless Gemini interactions (`store: false`). This does not override Google's own service terms or data-handling policies.

@@ -333,7 +333,8 @@ class MarkdownBuilder {
     } else {
       try {
         const absUrl = new URL(rawSrc, window.location.href).href;
-        dataUrl = await this.captureImageAsDataUrl(absUrl, liveImg);
+        const remaining = state.opts.imageDeadline ? state.opts.imageDeadline - Date.now() : 10000;
+        if (remaining > 0) dataUrl = await this.captureImageAsDataUrl(absUrl, liveImg, remaining);
       } catch (e) {
         console.warn('[LearnFlow] Could not extract image:', e);
       }
@@ -366,10 +367,10 @@ class MarkdownBuilder {
   /**
    * Robustly capture an image (works on authenticated O'Reilly pages via credentials: 'include' or Canvas)
    */
-  static async captureImageAsDataUrl(absoluteUrl, liveImgEl = null) {
+  static async captureImageAsDataUrl(absoluteUrl, liveImgEl = null, timeoutMs = 10000) {
     // 1. Try authenticated fetch first (works on same-origin O'Reilly image assets)
     try {
-      const response = await fetch(absoluteUrl, { credentials: 'include' });
+      const response = await fetch(absoluteUrl, { credentials: 'include', signal: AbortSignal.timeout(Math.max(1, Math.ceil(timeoutMs))) });
       if (response.ok) {
         const blob = await response.blob();
         if (blob.type.startsWith('image/')) {
@@ -383,6 +384,14 @@ class MarkdownBuilder {
       }
     } catch {
       // Fallback to canvas below
+    }
+
+    // Extension host permissions can fetch cross-origin figures that page CORS blocks.
+    if (timeoutMs === 10000 && typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      try {
+        const result = await chrome.runtime.sendMessage({action: 'FETCH_FIGURE_IMAGE', url: absoluteUrl});
+        if (result?.dataUrl) return result.dataUrl;
+      } catch { /* Try already-loaded image pixels below. */ }
     }
 
     // 2. Fallback: draw already-loaded DOM <img> onto an offscreen canvas

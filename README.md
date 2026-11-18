@@ -102,3 +102,37 @@
 ## 📄 License
 
 MIT License. Open source and free for personal and community use.
+
+
+## Reliability update & Resume home
+
+The side panel now opens on Home, with the most recent saved article, a Resume button, and the next three queued pages. Briefs and selected-text playback do not change article progress or trigger chapter completion. Queue entries remain queued until the destination reader confirms it has started; failed handoffs can be retried.
+
+History records pages used with LearnFlow, not unrelated browsing. Existing history can be cleared in the History tab. Drive sync validates server responses and uploads separate figure assets. **Existing Apps Script users must copy the updated script from Settings and redeploy their web app to enable figure uploads.** Failed cloud sync is shown separately from successful local saving.
+
+### Verification
+
+- `node tests/regression.test.cjs` — Drive response handling and interrupted narration regression tests (no dependencies).
+- `python tests/e2e_test.py` — browser tests using Python Playwright and Microsoft Edge on Windows. Includes Home/resume, playback isolation, privacy, archival, and queue handoff. Screenshots are written to `tests/artifacts/`.
+
+
+### v1.2.7 reader fixes
+
+Text highlights follow the active sentence without an inset stripe covering the left edge. Speech errors pause at the current sentence for retry; finishing retains the last position on screen. Archiving no longer rebuilds the playback queue, fragment-only URL changes do not restart reading, and rapid navigation saves positions in order.
+
+After updating, reload the unpacked extension and refresh the article tab to replace its existing content scripts. The side-panel header displays the loaded version.
+
+
+### v1.2.8 automatic chapter advance
+
+Progress reaches 100% only after the final sentence finishes. Automatic archival skips AI flashcards and limits image fetching to a four-second budget (remaining images retain their source URLs), so these requests cannot hold up chapter navigation. Manual archival still generates flashcards when configured. Auto-Next respects the configured delay, ignores disabled/hidden/self links, and keeps its resume marker in the current tab. The next page waits for readable content before starting; missing Next links and disabled Auto-Next show an explanation.
+
+
+### v1.2.9 reading controls and figure explanations
+
+- Scroll, then use the crosshair button or Settings → Read from here. Previous/Next section jumps between headings. Optional Follow my scroll pauses listening during a wheel/touch/keyboard scroll and resumes at visible text after scrolling settles.
+- Settings shows the detected Next control. Next page now tests it immediately; Choose Next lets you select an enabled page control for the current chapter. O'Reilly navigation also checks actual ordered book TOC links and ignores current-chapter fragments; no chapter URLs are guessed. Buttons that replace chapter content without changing the URL are handled.
+- Figure explanations use image pixels, captions, and nearby prose, describing components, relationships, flow, and takeaway. Failures show their cause, explicitly read “Caption only,” and can be retried with Explain visible figure. Cross-origin image retrieval can use the extension's existing host permissions.
+- The cloud client now uses Gemini Interactions with `gemini-3.5-flash-lite` by default, a configurable model, a request timeout, and `store: false`. Settings → Test AI connection checks saved credentials. A cloud API key is required for figure explanations, and provider usage charges may apply.
+
+Validation uses local browser fixtures and mocked AI responses. The signed-in O'Reilly page and real Gemini account have not been verified by these tests. Reload the extension and refresh the article tab after updating.

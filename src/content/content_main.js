@@ -9,6 +9,10 @@
   const audioPlayer = new AudioPlayer();
   let extractedData = null;
   let lastExtractedUrl = null;
+  let lastExtractedText = null;
+  let playbackMode = 'article';
+  let learningUrl = null;
+  let progressWrites = Promise.resolve();
 
   const getCanonicalUrl = (u = window.location.href) => {
     try {
@@ -19,44 +23,42 @@
     }
   };
 
-  const savePlayProgress = async (index, total) => {
-    if (!total || YouTubeHandler.isYouTubeHost()) return;
-    const key = getCanonicalUrl();
-    const data = await chrome.storage.local.get(['learnflow_play_progress']);
-    const map = data.learnflow_play_progress || {};
-    map[key] = {
-      index,
-      total,
-      percent: Math.round(((index + 1) / total) * 100),
-      title: document.title,
-      updatedAt: Date.now()
-    };
-    // Keep at most 200 recent page positions
-    const entries = Object.entries(map);
-    if (entries.length > 200) {
-      entries.sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
-      await chrome.storage.local.set({ learnflow_play_progress: Object.fromEntries(entries.slice(0, 200)) });
-    } else {
-      await chrome.storage.local.set({ learnflow_play_progress: map });
-    }
+  const updateProgress = operation => {
+    progressWrites = progressWrites.catch(() => {}).then(operation);
+    return progressWrites;
   };
 
-  const clearPlayProgress = async () => {
+  const savePlayProgress = (index, total) => {
+    if (playbackMode !== 'article' || !total || YouTubeHandler.isYouTubeHost()) return;
     const key = getCanonicalUrl();
-    const data = await chrome.storage.local.get(['learnflow_play_progress']);
-    const map = data.learnflow_play_progress || {};
-    if (map[key]) {
+    const position = { index, total, percent: Math.round(((index + 1) / total) * 100),
+      title: document.title, updatedAt: Date.now() };
+    return updateProgress(async () => {
+      const data = await chrome.storage.local.get(['learnflow_play_progress']);
+      const map = data.learnflow_play_progress || {};
+      map[key] = position;
+      const entries = Object.entries(map).sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0));
+      await chrome.storage.local.set({ learnflow_play_progress: Object.fromEntries(entries.slice(0, 200)) });
+    });
+  };
+
+  const clearPlayProgress = () => {
+    const key = getCanonicalUrl();
+    return updateProgress(async () => {
+      const data = await chrome.storage.local.get(['learnflow_play_progress']);
+      const map = data.learnflow_play_progress || {};
       delete map[key];
       await chrome.storage.local.set({ learnflow_play_progress: map });
-    }
+    });
   };
 
   const restorePlayProgress = async () => {
+    await progressWrites;
     if (!audioPlayer.chunks.length || YouTubeHandler.isYouTubeHost()) return null;
     const key = getCanonicalUrl();
     const data = await chrome.storage.local.get(['learnflow_play_progress']);
     const saved = (data.learnflow_play_progress || {})[key];
-    if (saved && saved.index > 0 && saved.index < audioPlayer.chunks.length - 1) {
+    if (saved && saved.index >= 0 && saved.index < audioPlayer.chunks.length) {
       audioPlayer.seekTo(saved.index);
       return saved;
     }
@@ -74,10 +76,12 @@
   const ensureFreshExtraction = async (force = false) => {
     if (YouTubeHandler.isYouTubeHost()) return null;
 
-    if (force || !extractedData || lastExtractedUrl !== window.location.href || !extractedData.chunks?.length) {
+    if (force || !extractedData || lastExtractedUrl !== getCanonicalUrl() || !extractedData.chunks?.length) {
       extractedData = ContentExtractor.extract();
-      lastExtractedUrl = window.location.href;
+      lastExtractedUrl = getCanonicalUrl();
+      lastExtractedText = extractedData.contentEl?.textContent || null;
       if (extractedData.chunks && extractedData.chunks.length > 0) {
+        playbackMode = 'article';
         audioPlayer.setQueue(extractedData.chunks);
         await restorePlayProgress();
         console.log(`[LearnFlow] Extracted ${extractedData.chunks.length} main-content segments from:`, extractedData.title);
@@ -87,15 +91,28 @@
   };
 
   // Play handler (resumes from saved position if available!)
-  const handlePlay = async () => {
-    if (audioPlayer.isPaused && lastExtractedUrl === window.location.href) {
+  const handlePlay = async ({ resumeArticle = false } = {}) => {
+    learningUrl = window.location.href;
+    reportCurrentVisit();
+    if (YouTubeHandler.isYouTube()) {
+      const video = document.querySelector('video');
+      if (!video) throw new Error('Video is not ready. Try again shortly.');
+      await video.play();
+      return;
+    }
+    if (!resumeArticle && audioPlayer.isPaused && lastExtractedUrl === getCanonicalUrl()) {
       audioPlayer.play();
       return;
     }
-    const data = await ensureFreshExtraction(lastExtractedUrl !== window.location.href || !audioPlayer.chunks.length);
-    if (!data || !data.chunks?.length) {
-      if (playerUI.isVisible()) playerUI.showToast('No readable content found on this page.');
+    if (playbackMode === 'article' && audioPlayer.isPlaying && lastExtractedUrl === getCanonicalUrl()) return;
+    if (playbackMode !== 'article') await ensureFreshExtraction(true);
+    if (audioPlayer.isPaused && lastExtractedUrl === getCanonicalUrl()) {
+      audioPlayer.play();
       return;
+    }
+    const data = await ensureFreshExtraction(lastExtractedUrl !== getCanonicalUrl() || !audioPlayer.chunks.length);
+    if (!data || !data.chunks?.length) {
+      throw new Error('No readable content found on this page.');
     }
     if (audioPlayer.currentIndex === 0) {
       const saved = await restorePlayProgress();
@@ -112,13 +129,17 @@
   const handleRestart = async () => {
     await clearPlayProgress();
     audioPlayer.stop();
-    await ensureFreshExtraction(false);
+    await ensureFreshExtraction(true);
+    learningUrl = window.location.href;
+    reportCurrentVisit();
     audioPlayer.play();
     if (playerUI.isVisible()) playerUI.showToast('↺ Restarting from top');
   };
 
   // Archival function: clean Markdown + separate image files (ZERO inline base64 gibberish!)
-  const handleArchive = async () => {
+  const handleArchive = async ({ automatic = false } = {}) => {
+    learningUrl = window.location.href;
+    reportCurrentVisit();
     try {
       if (YouTubeHandler.isYouTubeHost() && !YouTubeHandler.isYouTube()) {
         if (playerUI) playerUI.showToast('Open a YouTube video first to save its transcript!');
@@ -148,7 +169,7 @@
           images: ytData.images || []
         };
       } else {
-        const data = await ensureFreshExtraction(true);
+        const data = ContentExtractor.extract();
 
         const chapterSlug = (data.chapterTitle || 'ch')
           .toLowerCase()
@@ -158,14 +179,15 @@
 
         const { markdown: mdContent, images } = await MarkdownBuilder.elementToMarkdownWithAssets(data.contentEl, {
           extractImages: true,
-          imagePrefix: `${chapterSlug}_fig_`
+          imagePrefix: `${chapterSlug}_fig_`,
+          imageDeadline: automatic ? Date.now() + 4000 : null
         });
 
         // Append Anki flashcards if Gemini AI is configured
         let flashcardSection = '';
         try {
           const rawSample = (data.contentEl.innerText || data.contentEl.textContent || '').trim().substring(0, 10000);
-          const ankiCards = await GeminiAI.generateAnkiCards(rawSample);
+          const ankiCards = automatic ? '' : await GeminiAI.generateAnkiCards(rawSample);
           if (ankiCards && ankiCards.includes('Q:')) {
             flashcardSection = `\n\n## 📇 Active Recall & Flashcards\n\n${ankiCards}\n`;
           }
@@ -195,6 +217,10 @@
         payload: archivePayload
       }, (response) => {
         if (response && response.success) {
+          if (response.gdrive?.error && !response.gdrive?.skipped) {
+            playerUI.showToast('Saved locally. Drive sync failed: ' + response.gdrive.error, 6500);
+            return;
+          }
           if (YouTubeHandler.isYouTube()) {
             const cueMsg = archivePayload.transcriptCount > 0
               ? `${archivePayload.transcriptCount} transcript cues`
@@ -218,6 +244,8 @@
 
   // Gemini Audio Brief handler
   const handleGeminiBrief = async () => {
+    learningUrl = window.location.href;
+    reportCurrentVisit();
     try {
       if (playerUI) playerUI.showToast('✨ Gemini is preparing your 2-min audio brief...');
 
@@ -226,7 +254,7 @@
         const yt = await YouTubeHandler.buildVideoStudyGuide(false);
         rawText = yt.markdown;
       } else {
-        const data = await ensureFreshExtraction(true);
+        const data = ContentExtractor.extract();
         rawText = (data.contentEl.innerText || data.contentEl.textContent || '').trim().substring(0, 20000);
       }
 
@@ -235,6 +263,7 @@
       const sentences = brief.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [brief];
       const briefChunks = sentences.map(s => ({ type: 'text', text: s.trim(), element: null }));
 
+      playbackMode = 'brief';
       audioPlayer.setQueue(briefChunks);
       audioPlayer.play();
       if (playerUI) playerUI.showToast('🎙️ Playing Gemini Audio Briefing...');
@@ -263,6 +292,7 @@
 
   // Log exact page or YouTube video visit
   const reportCurrentVisit = () => {
+    if (learningUrl !== window.location.href) return;
     if (YouTubeHandler.isYouTubeHost()) {
       if (!YouTubeHandler.isYouTube()) return; // Skip YouTube homepage
       const meta = YouTubeHandler.getVideoMetadata();
@@ -289,12 +319,86 @@
     }
   };
 
+  const readerStatus = (message, id = 'lf-navigation-status') => {
+    const label = playerUI.root?.querySelector(`#${id}`);
+    if (label) label.textContent = message;
+    playerUI.showToast(message, 5500);
+  };
+
+  const prepareArticle = async () => {
+    audioPlayer.suppressAutoScrollUntil = Date.now() + 1500;
+    await ensureFreshExtraction(playbackMode !== 'article');
+    learningUrl = window.location.href;
+    reportCurrentVisit();
+  };
+
+  const readHere = async () => {
+    try {
+      await prepareArticle();
+      const index = audioPlayer.visibleChunkIndex();
+      if (index < 0) return readerStatus('Scroll to some article text, then choose Read from here.');
+      audioPlayer.jumpToIndex(index);
+      playerUI.showToast('Reading from the visible section');
+    } catch (error) { readerStatus(error.message); }
+  };
+
+  const nextPageNow = async (delay = 0) => {
+    try {
+      readerStatus(AutoNavigator.status());
+      const advanced = await AutoNavigator.advanceToNext(seconds => readerStatus(`Next chapter in ${seconds}s…`), delay);
+      if (!advanced) readerStatus('Next page did not open. Choose Next, then click the book’s Next control.');
+    } catch (error) { readerStatus(`Next page failed: ${error.message}`); }
+  };
+
+  const chooseNext = () => {
+    readerStatus('Click the book’s Next button or chapter link. Press Escape to cancel.');
+    const cleanup = () => {
+      document.removeEventListener('click', capture, true);
+      document.removeEventListener('keydown', cancel, true);
+    };
+    const cancel = event => { if (event.key === 'Escape') { cleanup(); readerStatus('Choosing Next canceled.'); } };
+    const capture = event => {
+      if (event.target.closest('#learnflow-player-root')) return;
+      const target = event.target.closest('a, button, [role=button]');
+      if (!target) return;
+      event.preventDefault(); event.stopImmediatePropagation(); cleanup();
+      try { AutoNavigator.choose(target); readerStatus(AutoNavigator.status()); }
+      catch (error) { readerStatus(error.message); }
+    };
+    document.addEventListener('click', capture, true);
+    document.addEventListener('keydown', cancel, true);
+  };
+
+  const explainVisibleFigure = async () => {
+    try {
+      await prepareArticle();
+      const candidates = audioPlayer.chunks.map((chunk, index) => ({chunk, index, rect: chunk.element?.getBoundingClientRect()}))
+        .filter(item => item.chunk.type === 'figure' && item.rect?.bottom > 0 && item.rect.top < window.innerHeight)
+        .sort((a, b) => Math.abs(a.rect.top - 80) - Math.abs(b.rect.top - 80));
+      if (!candidates.length) return readerStatus('Scroll to a figure, then choose Explain visible figure.', 'lf-figure-status');
+      const {chunk, index} = candidates[0];
+      chunk.spokenText = null;
+      chunk.figureError = null;
+      audioPlayer.figureNarrationEnabled = true;
+      readerStatus('Reading the image and surrounding explanation…', 'lf-figure-status');
+      audioPlayer.jumpToIndex(index);
+    } catch (error) { readerStatus(error.message, 'lf-figure-status'); }
+  };
+
   // Instantiate Compact Dockable UI (on-demand — NOT auto-shown on every tab!)
   const playerUI = new PlayerUI(audioPlayer, {
+    onReadHere: readHere,
+    onSection: async direction => {
+      await prepareArticle();
+      if (!audioPlayer.jumpSection(direction)) readerStatus(direction > 0 ? 'No later section heading found.' : 'No earlier section heading found.');
+    },
+    onNextPage: () => nextPageNow(),
+    onChooseNext: chooseNext,
+    onExplainFigure: explainVisibleFigure,
     onArchiveRequest: handleArchive,
     onGeminiBriefRequest: handleGeminiBrief,
     onAddToQueueRequest: handleAddToQueue,
-    onPlayRequest: handlePlay,
+    onPlayRequest: () => handlePlay().catch(error => playerUI.showToast(error.message)),
     onRestartRequest: handleRestart,
     onCloseRequest: () => {
       // Stop speech without wiping saved play progress, then remove bar
@@ -312,7 +416,7 @@
       playerUI.init();
     }
     if (!YouTubeHandler.isYouTubeHost()) {
-      await ensureFreshExtraction(lastExtractedUrl !== window.location.href || !audioPlayer.chunks.length);
+      await ensureFreshExtraction(lastExtractedUrl !== getCanonicalUrl() || !audioPlayer.chunks.length);
       if (audioPlayer.chunks.length > 0) {
         if (audioPlayer.currentIndex === 0) {
           await restorePlayProgress();
@@ -322,6 +426,29 @@
       }
     }
   };
+
+  let lastScrollInput = 0, scrollTimer = null, followWasPlaying = false;
+  const userScrollIntent = event => {
+    if (!playerUI.isVisible() || event.target.closest?.('#learnflow-player-root, input, textarea, select')) return;
+    if (event.type === 'keydown' && !['PageDown', 'PageUp', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    lastScrollInput = Date.now();
+    audioPlayer.suppressAutoScrollUntil = Date.now() + 30000;
+    if (playerUI.followScroll && audioPlayer.isPlaying) {
+      followWasPlaying = true;
+      audioPlayer.pause();
+    }
+  };
+  document.addEventListener('wheel', userScrollIntent, {passive: true, capture: true});
+  document.addEventListener('touchmove', userScrollIntent, {passive: true, capture: true});
+  document.addEventListener('keydown', userScrollIntent, true);
+  document.addEventListener('scroll', () => {
+    if (!playerUI.followScroll || !followWasPlaying || Date.now() - lastScrollInput > 1800) return;
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => {
+      followWasPlaying = false;
+      if (playerUI.isVisible() && playerUI.followScroll) readHere();
+    }, 700);
+  }, {passive: true, capture: true});
 
   // Alt + Click on any paragraph/heading/figure to jump right there and start reading!
   document.addEventListener('click', async (e) => {
@@ -333,7 +460,10 @@
 
     e.preventDefault();
     await openPlayer();
+    if (playbackMode !== 'article') await ensureFreshExtraction(true);
+    learningUrl = window.location.href;
     const jumped = audioPlayer.jumpToElement(targetBlock);
+    if (jumped) reportCurrentVisit();
     if (jumped) {
       playerUI.showToast('🎧 Reading from selected spot');
     } else {
@@ -343,29 +473,28 @@
 
   if (!YouTubeHandler.isYouTubeHost()) {
     audioPlayer.onComplete = async () => {
+      if (playbackMode !== 'article') return;
       console.log('[LearnFlow] Audio reached end of section.');
       await clearPlayProgress();
-      await handleArchive();
+      playerUI.showToast('Reading complete. Saving notes before next page…');
+      await handleArchive({ automatic: true });
 
-      const data = await chrome.storage.local.get(['learnflow_playlist']);
+      const data = await chrome.storage.local.get(['learnflow_playlist', 'learnflow_nav_delay']);
+      const delay = Math.max(1, Math.min(10, Number(data.learnflow_nav_delay) || 2));
       if (data.learnflow_playlist && data.learnflow_playlist.length > 0) {
-        playerUI.showToast('Next item in Playlist Queue in 2s...');
+        playerUI.showToast(`Next item in Playlist Queue in ${delay}s...`);
         setTimeout(() => {
-          chrome.runtime.sendMessage({ action: 'PLAYLIST_ADVANCE' });
-        }, 2000);
+          chrome.runtime.sendMessage({ action: 'PLAYLIST_ADVANCE' }).then(result => {
+            if (!result?.success) playerUI.showToast(result?.error || 'Could not start the next queued page.', 5000);
+          });
+        }, delay * 1000);
         return;
       }
 
       if (playerUI.autoAdvance) {
-        const advanced = await AutoNavigator.advanceToNext((sec) => {
-          playerUI.showToast(`Next chapter in ${sec}s...`);
-        }, 2);
-
-        if (!advanced) {
-          playerUI.showToast('Reached the end of available chapters.');
-        }
+        await nextPageNow(delay);
       } else {
-        playerUI.showToast('Completed section.');
+        playerUI.showToast('Completed. Auto-Next is OFF; enable it in the reader settings to continue.', 6000);
       }
     };
   }
@@ -385,11 +514,30 @@
     }, 30000);
   }
 
+  const resumeNextPage = async (previousText = null) => {
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const candidate = ContentExtractor.extract();
+      const text = candidate.contentEl?.textContent || '';
+      if (candidate.chunks?.length && (previousText === null || text !== previousText)) {
+        await openPlayer();
+        await handlePlay();
+        playerUI.showToast('Reading next chapter');
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    playerUI.showToast('Next page is still loading. Press Play when its text appears.', 6000);
+  };
+
   // Watch for SPA URL navigation on O'Reilly / skills.google / YouTube
-  let currentUrl = window.location.href;
+  let currentUrl = getCanonicalUrl();
   setInterval(async () => {
-    if (window.location.href !== currentUrl) {
-      currentUrl = window.location.href;
+    const pendingNavigation = sessionStorage.getItem('learnflow_navigation');
+    const changedInPlace = pendingNavigation && lastExtractedText && extractedData?.contentEl &&
+      ((ContentExtractor.extract().contentEl?.textContent || '') !== lastExtractedText);
+    if (getCanonicalUrl() !== currentUrl || changedInPlace) {
+      const previousText = lastExtractedText;
+      currentUrl = getCanonicalUrl();
       extractedData = null;
       lastExtractedUrl = null;
       audioPlayer.stop();
@@ -399,9 +547,7 @@
       const shouldResume = await AutoNavigator.checkAutoResume();
       setTimeout(async () => {
         if (shouldResume && !YouTubeHandler.isYouTubeHost()) {
-          await openPlayer();
-          playerUI.showToast('Auto-playing next chapter...');
-          audioPlayer.play();
+          resumeNextPage(previousText).catch(error => playerUI.showToast(error.message));
         } else if (playerUI.isVisible()) {
           await ensureFreshExtraction(true);
         }
@@ -416,10 +562,7 @@
   const shouldAutoResume = await AutoNavigator.checkAutoResume();
   if (shouldAutoResume && !YouTubeHandler.isYouTubeHost()) {
     setTimeout(async () => {
-      await openPlayer();
-      playerUI.showToast('Auto-playing next chapter...');
-      audioPlayer.play();
-      handleArchive();
+      resumeNextPage().catch(error => playerUI.showToast(error.message));
     }, 1500);
   }
 
@@ -447,7 +590,7 @@
         if (audioPlayer.isPlaying) {
           audioPlayer.pause();
         } else {
-          handlePlay();
+          handlePlay().catch(error => playerUI.showToast(error.message));
         }
       })();
     } else if (message.action === 'TRIGGER_GEMINI_AUDIO_BRIEF') {
@@ -455,12 +598,17 @@
     } else if (message.action === 'READ_TEXT_SNIPPET') {
       if (message.text) {
         openPlayer().then(() => {
+          learningUrl = window.location.href;
+          reportCurrentVisit();
+          playbackMode = 'selection';
           audioPlayer.setQueue([{ type: 'text', text: message.text, element: null }]);
           audioPlayer.play();
         });
       }
     } else if (message.action === 'AUTO_START_READING') {
-      openPlayer().then(() => handlePlay());
+      openPlayer().then(() => handlePlay({ resumeArticle: true })).then(() => sendResponse({ success: true }))
+        .catch(error => sendResponse({ success: false, error: error.message }));
+      return true;
     }
   });
 })();

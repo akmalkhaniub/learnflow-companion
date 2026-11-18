@@ -11,6 +11,7 @@ let cachedVaultItems = [];
 let cachedHistoryItems = [];
 
 document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('app-version').textContent = `v${chrome.runtime.getManifest().version}`;
   // 1. Initialize Light/Dark Theme (Defaults to Light Mode)
   await initTheme();
 
@@ -60,6 +61,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 4. Initialize Feature Tabs
   initGeminiTab();
   initPlaylistTab();
+  initHome();
 
   // 5. Load Initial Data
   await loadPlaylist();
@@ -85,6 +87,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (changes.learnflow_history) loadHistoryItems();
     if (changes.learnflow_playlist) loadPlaylist();
     if (changes.learnflow_pending_query) checkPendingQuery();
+    if (changes.learnflow_play_progress || changes.learnflow_playlist) renderHome();
     if (changes.learnflow_theme) applyTheme(changes.learnflow_theme.newValue || 'light');
   });
 });
@@ -123,6 +126,7 @@ async function detectActiveTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab) {
       currentTabInfo = tab;
+      renderHome();
       const banner = document.getElementById('active-tab-title');
       if (banner) {
         banner.textContent = tab.title || tab.url;
@@ -271,8 +275,9 @@ async function initGeminiTab() {
         markdown: md,
         images: []
       }
-    }, () => {
-      alert('✓ Saved Gemini summary to Downloads/LearnFlow_Vault/ & Google Drive!');
+    }, (result) => {
+      const error = chrome.runtime.lastError;
+      alert(error ? error.message : !result?.success ? (result?.error || 'Save failed') : result.gdrive?.success ? 'Saved locally and to Google Drive.' : result.gdrive?.error ? 'Saved locally. Drive sync failed: ' + result.gdrive.error : 'Saved locally.');
     });
   });
 }
@@ -286,7 +291,9 @@ function initPlaylistTab() {
       alert('Your playlist queue is empty. Add pages with ➕ Queue on the floating bar!');
       return;
     }
-    chrome.runtime.sendMessage({ action: 'PLAYLIST_ADVANCE' });
+    chrome.runtime.sendMessage({ action: 'PLAYLIST_ADVANCE' }).then(result => {
+      if (!result?.success) alert(result?.error || 'Could not start queue');
+    }).catch(error => alert(error.message));
   });
 
   document.getElementById('btn-clear-playlist')?.addEventListener('click', async () => {
@@ -415,7 +422,7 @@ function renderVaultList(items) {
     const details = [];
     if (item.transcriptCount > 0) details.push(`📝 ${item.transcriptCount} cues`);
     if (item.imagesSaved > 0) details.push(`🖼️ ${item.imagesSaved} img`);
-    details.push(item.gdriveSynced ? '☁️ Drive' : '💾 Local');
+    details.push(item.gdriveSynced ? '☁️ Drive synced' : item.gdriveError ? '⚠ Drive sync failed' : '💾 Local');
 
     const localDisplay = item.localFile ? `Downloads/${item.localFile}` : 'Downloads/LearnFlow_Vault/';
 
@@ -427,6 +434,7 @@ function renderVaultList(items) {
         </div>
         <a href="${escapeHtml(item.url)}" target="_blank" class="item-title">${escapeHtml(item.title)}</a>
         <div class="vault-path-pill" title="${escapeHtml(localDisplay)}">📁 ${escapeHtml(localDisplay)}</div>
+        <p class="sync-error">${escapeHtml(item.gdriveError || "")}</p>
         <div class="item-meta">
           <span>${details.join(' • ')}</span>
           <div class="vault-card-actions">
@@ -554,7 +562,7 @@ async function initSettings() {
     'learnflow_preferred_rate',
     'learnflow_nav_delay',
     'learnflow_preferred_voice',
-    'gemini_api_key',
+    'gemini_api_key', 'gemini_model',
     'obsidian_vault_folder'
   ]);
 
@@ -569,6 +577,8 @@ async function initSettings() {
     showSettingsMsg(`Obsidian/Local folder set to: Downloads/${val}`);
   });
 
+  const modelInput = document.getElementById('setting-gemini-model');
+  modelInput.value = data.gemini_model || 'gemini-3.5-flash-lite';
   const geminiInput = document.getElementById('setting-gemini-key');
   if (geminiInput && data.gemini_api_key) {
     geminiInput.value = data.gemini_api_key;
@@ -577,7 +587,21 @@ async function initSettings() {
   document.getElementById('btn-save-gemini-key')?.addEventListener('click', async () => {
     const key = geminiInput.value.trim();
     await chrome.storage.local.set({ gemini_api_key: key });
-    showSettingsMsg('Gemini API Key saved!');
+    await chrome.storage.local.set({gemini_model: modelInput.value.trim() || 'gemini-3.5-flash-lite'});
+    showSettingsMsg('Gemini API key and model saved.');
+  });
+
+  document.getElementById('btn-test-gemini').addEventListener('click', async event => {
+    const label = document.getElementById('gemini-test-status');
+    event.target.disabled = true;
+    label.textContent = 'Testing saved settings…';
+    try {
+      const status = await GeminiAI.isAvailable();
+      if (status.mode !== 'cloud') throw new Error('Save your Gemini API key first.');
+      await GeminiAI.query('Reply with OK.');
+      label.textContent = 'AI connection works. Figure explanations also require an accessible image.';
+    } catch (error) { label.textContent = error.message; }
+    finally { event.target.disabled = false; }
   });
 
   const nanoStatus = document.getElementById('nano-status-label');
@@ -585,7 +609,7 @@ async function initSettings() {
   if (nanoStatus) {
     nanoStatus.textContent = nanoAvailable
       ? '✓ Chrome Built-in Gemini Nano detected and ready!'
-      : 'ℹ️ On-device Gemini Nano not active (Enter free API key above for Gemini 2.0 Flash + Vision).';
+      : 'ℹ️ On-device Gemini Nano not active (Enter free API key above for cloud AI + figure explanations).';
   }
 
   const webhookInput = document.getElementById('setting-gdrive-webhook');
@@ -610,8 +634,20 @@ function doPost(e) {
     
     var fileName = (data.chapterTitle || data.title) + ".md";
     targetFolder.createFile(fileName, data.content, MimeType.PLAIN_TEXT);
+    var images = data.images || [];
+    var imagesSaved = 0;
+    if (images.length) {
+      var imageFolder = getOrCreateFolder("images", targetFolder);
+      images.forEach(function(image) {
+        var comma = image.dataUrl.indexOf(',');
+        var mimeType = image.dataUrl.substring(5, image.dataUrl.indexOf(';'));
+        var bytes = Utilities.base64Decode(image.dataUrl.substring(comma + 1));
+        imageFolder.createFile(Utilities.newBlob(bytes, mimeType, image.filename));
+        imagesSaved++;
+      });
+    }
     
-    return ContentService.createTextOutput(JSON.stringify({status: "success"}))
+    return ContentService.createTextOutput(JSON.stringify({status: "success", imagesSaved: imagesSaved}))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({status: "error", message: err.toString()}))
@@ -730,4 +766,69 @@ function formatTimeAgo(ts) {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+let homeResumeUrl = null;
+let homeBusy = false;
+let homeRenderVersion = 0;
+
+function readableWebUrl(url) {
+  try { return ['http:', 'https:'].includes(new URL(url).protocol); } catch { return false; }
+}
+
+async function renderHome() {
+  const version = ++homeRenderVersion;
+  const data = await chrome.storage.local.get(['learnflow_play_progress', 'learnflow_playlist']);
+  if (version !== homeRenderVersion) return;
+  const saved = Object.entries(data.learnflow_play_progress || {})
+    .filter(([url, item]) => readableWebUrl(url) && item.total > 0 && item.index >= 0 && item.index < item.total)
+    .sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0))[0];
+  homeResumeUrl = saved?.[0] || (readableWebUrl(currentTabInfo?.url) ? currentTabInfo.url : null);
+  const item = saved?.[1];
+  document.getElementById('home-resume-label').textContent = saved ? 'LAST READING SESSION' : 'START SOMETHING NEW';
+  document.getElementById('home-resume-title').textContent = item?.title || (homeResumeUrl ? currentTabInfo.title || homeResumeUrl : 'Start with a page you want to learn.');
+  document.getElementById('home-resume-source').textContent = homeResumeUrl ? new URL(homeResumeUrl).hostname : '';
+  const progress = document.getElementById('home-progress');
+  progress.hidden = !saved;
+  progress.value = item ? Math.round(item.index / item.total * 100) : 0;
+  document.getElementById('home-resume-detail').textContent = saved ? `Resume at section ${item.index + 1} of ${item.total} · ${formatTimeAgo(item.updatedAt)}` : 'Open an article or video to begin. No AI setup needed for reading.';
+  const resume = document.getElementById('btn-home-resume');
+  resume.textContent = homeBusy ? 'Opening reader…' : saved ? '▶ Resume reading' : '▶ Read this page';
+  resume.disabled = homeBusy || !homeResumeUrl;
+  const current = document.getElementById('btn-home-current');
+  current.hidden = !saved || !readableWebUrl(currentTabInfo?.url) || currentTabInfo.url === homeResumeUrl;
+  current.disabled = homeBusy;
+  const queue = data.learnflow_playlist || [];
+  document.getElementById('home-queue-summary').textContent = queue.length ? `${queue.length} ${queue.length === 1 ? 'page' : 'pages'} waiting in your queue` : 'Add pages from the reader to build your next session.';
+  const list = document.getElementById('home-queue-list');
+  list.replaceChildren();
+  for (const [index, queued] of queue.slice(0, 3).entries()) {
+    const card = document.createElement('div');
+    card.className = 'item-card';
+    card.textContent = `${index + 1}. ${queued.title || queued.url}`;
+    list.appendChild(card);
+  }
+}
+
+function initHome() {
+  const start = async url => {
+    if (!url || homeBusy) return;
+    homeBusy = true;
+    document.getElementById('home-status').textContent = '';
+    renderHome();
+    try {
+      const result = await chrome.runtime.sendMessage({ action: 'RESUME_READING', url });
+      if (!result?.success) throw new Error(result?.error || 'Could not open the reader.');
+      document.getElementById('home-status').textContent = 'Reader started. Your place will be saved as you listen.';
+    } catch (error) {
+      document.getElementById('home-status').textContent = error.message;
+    } finally {
+      homeBusy = false;
+      renderHome();
+    }
+  };
+  document.getElementById('btn-home-resume').addEventListener('click', () => start(homeResumeUrl));
+  document.getElementById('btn-home-current').addEventListener('click', () => start(currentTabInfo?.url));
+  document.getElementById('btn-home-queue').addEventListener('click', () => document.querySelector('[data-tab="playlist"]').click());
+  renderHome();
 }

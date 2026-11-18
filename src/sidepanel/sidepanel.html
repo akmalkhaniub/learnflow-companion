@@ -11,7 +11,7 @@
       <div class="logo-icon">LF</div>
       <div>
         <h1>LearnFlow & Ask Gemini</h1>
-        <p class="subtitle">Hands-Free Reader & AI Companion</p>
+        <p class="subtitle">Hands-Free Reader & AI Companion · <span id="app-version"></span></p>
       </div>
     </div>
     <div class="header-actions" style="display: flex; gap: 6px; align-items: center;">
@@ -22,15 +22,34 @@
 
   <!-- Navigation Tabs -->
   <nav class="tabs-nav">
-    <button class="tab-btn active" data-tab="gemini">✨ Gemini</button>
-    <button class="tab-btn" data-tab="playlist">📑 Queue (<span id="playlist-count">0</span>)</button>
-    <button class="tab-btn" data-tab="vault">📁 Vault (<span id="vault-count">0</span>)</button>
-    <button class="tab-btn" data-tab="history">🕒 History (<span id="history-count">0</span>)</button>
-    <button class="tab-btn" data-tab="settings">⚙️</button>
+    <button class="tab-btn active" data-tab="home">Home</button>
+    <button class="tab-btn" data-tab="gemini">Gemini</button>
+    <button class="tab-btn" data-tab="playlist">Queue <span id="playlist-count">0</span></button>
+    <button class="tab-btn" data-tab="vault">Vault <span id="vault-count">0</span></button>
+    <button class="tab-btn" data-tab="history">History <span id="history-count">0</span></button>
+    <button class="tab-btn" data-tab="settings">Settings</button>
   </nav>
 
   <!-- Tab 0: Ask Gemini -->
-  <section class="tab-content active" id="tab-gemini">
+  <section class="tab-content active" id="tab-home">
+    <div class="home-heading"><span class="home-eyebrow">YOUR LEARNING SPACE</span><h2>Continue learning</h2><p>Pick up where you left off.</p></div>
+    <div class="resume-card">
+      <span class="item-badge" id="home-resume-label">READY WHEN YOU ARE</span>
+      <h3 id="home-resume-title">Start with a page you want to learn.</h3>
+      <p id="home-resume-source" class="home-detail"></p>
+      <progress id="home-progress" max="100" value="0" aria-label="Reading progress" hidden></progress>
+      <p id="home-resume-detail" class="home-detail">Open an article, then choose Read this page.</p>
+      <button class="primary-btn home-primary" id="btn-home-resume">Read this page</button>
+      <button class="secondary-btn" id="btn-home-current" hidden>Read current page instead</button>
+    </div>
+    <p id="home-status" role="status" aria-live="polite"></p>
+    <div class="home-queue-heading"><h3>Up next</h3><button class="secondary-btn" id="btn-home-queue">Manage queue</button></div>
+    <p id="home-queue-summary" class="home-detail">Your queue is empty.</p>
+    <div id="home-queue-list"></div>
+    <p class="home-footer">Your place is saved on this device. Only pages you use with LearnFlow appear in learning history.</p>
+  </section>
+
+  <section class="tab-content" id="tab-gemini">
     <div class="context-banner" id="gemini-active-tab-banner">
       <span class="context-icon">🌐</span>
       <span class="context-title" id="active-tab-title">Detecting active page...</span>
@@ -126,7 +145,7 @@
     <div class="items-list" id="history-items-list">
       <div class="empty-state">
         <p>No history logged yet.</p>
-        <span>Exact videos, book chapters, and tutorials you visit appear here automatically.</span>
+        <span>Pages you read, summarize, or archive with LearnFlow appear here. Unrelated browsing is not recorded.</span>
       </div>
     </div>
   </section>
@@ -135,13 +154,16 @@
   <section class="tab-content" id="tab-settings">
     <div class="settings-card">
       <h3>✨ Gemini AI Configuration</h3>
-      <p class="setting-desc">Supports on-device <b>Gemini Nano</b> (built into Chrome) or the <b>Gemini 2.0 Flash API</b> (Free tier, also enables Figure Vision narration!).</p>
+      <p class="setting-desc">Supports on-device <b>Gemini Nano</b> (built into Chrome) or the <b>Gemini cloud API</b> (Free tier, also enables Figure Vision narration!).</p>
       
       <div class="form-group">
         <label>Google Gemini API Key:</label>
         <input type="password" id="setting-gemini-key" class="text-input" placeholder="AIzaSy...">
         <span class="folder-status-text">Get a free key from <a href="https://aistudio.google.com" target="_blank" class="accent-link">Google AI Studio</a></span>
       </div>
+      <div class="form-group"><label for="setting-gemini-model">Cloud model</label><input class="text-input" id="setting-gemini-model" value="gemini-3.5-flash-lite"><span class="folder-status-text">Figures send the image and nearby text to Gemini. API usage may incur charges.</span></div>
+      <button class="secondary-btn" id="btn-test-gemini">Test AI connection</button>
+      <p id="gemini-test-status" role="status"></p>
       <button class="primary-btn" id="btn-save-gemini-key">Save Gemini Key</button>
       <div id="nano-status-label" class="status-msg" style="margin-top: 8px;"></div>
     </div>
@@ -164,7 +186,7 @@
 
     <div class="settings-card">
       <h3>☁️ Google Drive Sync</h3>
-      <p class="setting-desc">Auto-sync notes directly to a <code>LearnFlow Vault</code> folder in your Google Drive.</p>
+      <p class="setting-desc">Sync notes and figures to a <code>LearnFlow Vault</code> folder. Existing webhook users: copy and redeploy the updated script below to enable figure uploads.</p>
       
       <div class="form-group">
         <label>Google Apps Script Webhook URL:</label>

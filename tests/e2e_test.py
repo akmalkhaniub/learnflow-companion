@@ -19,7 +19,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 
 EXT_PATH = str(Path(__file__).resolve().parent.parent)
 EDGE_EXE = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
@@ -61,7 +61,9 @@ MOCK_CH4_HTML = f"""<!DOCTYPE html>
       </table>
       <pre><code class="language-python">def run_agent(task):
     return task.upper()</code></pre>
-      <a data-testid="next-link" href="/oreilly-ch5.html">Next Chapter</a>
+      <section id="jump-target" style="margin-top:1200px"><h2>Jump target section</h2><p>This section tests reading from the visible location.</p></section>
+      <section id="later-target" style="margin-top:1200px"><h2>Later section</h2><p>This section tests jumping forward by heading.</p></section>
+      <a data-testid="next-link" href="/oreilly-ch5.html">Next Chapter 5 Agent Handoffs</a>
     </div>
   </main>
 </body>
@@ -138,6 +140,8 @@ def run_tests():
             time.sleep(0.5)
 
             assert not sp.locator("body").evaluate("el => el.classList.contains('dark-theme')"), "Side panel should default to Light Mode!"
+            assert sp.locator("#tab-home").is_visible(), "Home must be the default tab"
+            sp.locator('.tab-btn[data-tab="gemini"]').click()
             assert sp.locator("#gemini-setup-banner").is_visible(), "Inline Gemini API setup banner should be visible when unconfigured!"
             assert sp.locator("#btn-toggle-page-player").inner_text().strip() == "▶ Read Page", "Read Page button should have clear label!"
             sp.locator("#btn-theme-toggle").click()
@@ -145,6 +149,9 @@ def run_tests():
             sp.locator("#btn-theme-toggle").click()
             assert not sp.locator("body").evaluate("el => el.classList.contains('dark-theme')"), "Theme toggle should switch back to Light Mode!"
             print("[PASS] 3. Side Panel defaults to Light Mode & toggles Light/Dark cleanly")
+
+            untouched_history = sp.evaluate("async () => (await chrome.storage.local.get('learnflow_history')).learnflow_history || []")
+            assert untouched_history == [], "Unrelated browsing must not be recorded"
 
             # 4. Trigger OPEN_PLAYER on the O'Reilly tab via extension runtime messaging
             sp.evaluate("""async () => {
@@ -195,7 +202,13 @@ def run_tests():
 
             # 6. Click real Archive button (#lf-btn-archive) -> verify clean archival & Vault card in Side Panel
             page.locator("#lf-btn-archive").click()
-            time.sleep(1.5)
+            sp.evaluate("""async () => {
+                for (let i = 0; i < 150; i++) {
+                    const data = await chrome.storage.local.get('learnflow_vault_items');
+                    if (data.learnflow_vault_items?.length) return;
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }""")
 
             vault_state = sp.evaluate("""async () => {
                 const d = await chrome.storage.local.get(['learnflow_vault_items']);
@@ -222,6 +235,178 @@ def run_tests():
             assert any("oreilly-ch4.html" in u for u in history_urls), f"History should record exact URL, got {history_urls}"
             print("[PASS] 7. History recorded exact chapter URL cleanly")
 
+            navigation = sp.evaluate("""async () => {
+                const tabs = await chrome.tabs.query({ url: 'http://127.0.0.1:*/*' });
+                const [result] = await chrome.scripting.executeScript({target: {tabId: tabs[0].id}, func: () => {
+                    const fixture = document.createElement('article');
+                    fixture.innerHTML = '<p style="margin:0;overflow:hidden">First sentence. <strong>Repeated sentence.</strong>  Repeated sentence. Final sentence.</p><blockquote><p>Nested quotation.</p></blockquote>';
+                    document.body.append(fixture);
+                    const paragraph = fixture.querySelector('p');
+                    const before = paragraph.getBoundingClientRect();
+                    const chunks = ContentExtractor._extractChunks(fixture);
+                    const player = new AudioPlayer();
+                    player.setQueue(chunks);
+                    const highlights = [];
+                    for (let i = 0; i < chunks.length; i++) {
+                        player.seekTo(i);
+                        highlights.push(CSS.highlights.get('learnflow-sentence').values().next().value.toString());
+                    }
+                    player.seekTo(2);
+                    const repeatedRange = CSS.highlights.get('learnflow-sentence').values().next().value;
+                    const secondRepeatNode = repeatedRange.startContainer === paragraph.lastChild;
+                    const style = getComputedStyle(paragraph);
+                    const noInsetStripe = style.boxShadow === 'none';
+                    const sameWidth = paragraph.getBoundingClientRect().width === before.width;
+                    player.next(); player.previous();
+                    const staysAtSentence = player.currentIndex === 2;
+                    window.__navigationFixture = fixture;
+                    window.__navigationPlayer = player;
+                    return {texts: chunks.map(c => c.text), highlights, secondRepeatNode, noInsetStripe, sameWidth, staysAtSentence};
+                }});
+                return result.result;
+            }""")
+            assert navigation['texts'] == navigation['highlights'], navigation
+            assert navigation['texts'].count('Nested quotation.') == 1, navigation
+            assert all(navigation[key] for key in ['secondRepeatNode', 'noInsetStripe', 'sameWidth', 'staysAtSentence']), navigation
+            navigation_artifacts = Path(EXT_PATH) / 'tests' / 'artifacts'
+            navigation_artifacts.mkdir(exist_ok=True)
+            page.screenshot(path=str(navigation_artifacts / 'sentence-highlight.png'))
+            sp.evaluate("""async () => {
+                const tabs = await chrome.tabs.query({ url: 'http://127.0.0.1:*/*' });
+                await chrome.scripting.executeScript({target: {tabId: tabs[0].id}, func: () => {
+                    window.__navigationPlayer.stop(); window.__navigationFixture.remove();
+                }});
+            }""")
+            print('[PASS] 12. Exact sentence highlights, repeated text, nested prose, and layout-safe stepping')
+
+            # Briefs and selections must preserve article progress and never archive/advance.
+            state_before = sp.evaluate("async () => await chrome.storage.local.get(['learnflow_play_progress', 'learnflow_vault_items'])")
+            for action in ['TRIGGER_GEMINI_AUDIO_BRIEF', 'READ_TEXT_SNIPPET']:
+                sp.evaluate("""async (action) => {
+                    const tabs = await chrome.tabs.query({ url: 'http://127.0.0.1:*/*' });
+                    const tabId = tabs[0].id;
+                    await chrome.scripting.executeScript({target: {tabId}, func: () => {
+                        AudioPlayer.prototype.play = function () { window.__testPlayer = this; this.isPlaying = true; this._notifyProgress(); };
+                        GeminiAI.generateAudioBrief = async () => 'A short test brief.';
+                    }});
+                    await chrome.tabs.sendMessage(tabId, {action, text: 'Selected test passage.'});
+                }""", action)
+                time.sleep(0.3)
+                sp.evaluate("""async () => {
+                    const tabs = await chrome.tabs.query({ url: 'http://127.0.0.1:*/*' });
+                    await chrome.scripting.executeScript({target: {tabId: tabs[0].id}, func: async () => {
+                        await window.__testPlayer.onComplete();
+                    }});
+                }""")
+                state_after = sp.evaluate("async () => await chrome.storage.local.get(['learnflow_play_progress', 'learnflow_vault_items'])")
+                assert state_after == state_before, f"{action} must preserve article progress and archives"
+            print('[PASS] 9. Brief and selection completion preserve article progress and archives')
+
+            sp.locator('.tab-btn[data-tab="home"]').click()
+            assert sp.locator('#btn-home-resume').inner_text() == '▶ Resume reading'
+            assert 'Architecting' in sp.locator('#home-resume-title').inner_text()
+            sp.locator('#btn-home-resume').click()
+            expect(sp.locator("#home-status")).to_contain_text("Reader started")
+            generation_before = sp.evaluate("""async () => {
+                const tabs = await chrome.tabs.query({ url: 'http://127.0.0.1:*/*' });
+                const [result] = await chrome.scripting.executeScript({target: {tabId: tabs[0].id}, func: () => {
+                    history.replaceState(null, '', '#reading-section');
+                    return window.__testPlayer.playbackGeneration;
+                }});
+                return result.result;
+            }""")
+            page.wait_for_timeout(1800)
+            generation_after = sp.evaluate("""async () => {
+                const tabs = await chrome.tabs.query({ url: 'http://127.0.0.1:*/*' });
+                const [result] = await chrome.scripting.executeScript({target: {tabId: tabs[0].id}, func: () => window.__testPlayer.playbackGeneration});
+                return result.result;
+            }""")
+            assert generation_after == generation_before, 'Hash navigation must not reset playback'
+            sp.set_viewport_size({'width': 380, 'height': 820})
+            page_output = Path(EXT_PATH) / 'tests' / 'artifacts'
+            page_output.mkdir(exist_ok=True)
+            sp.screenshot(path=str(page_output / 'home-light.png'), full_page=True)
+            sp.locator('#btn-theme-toggle').click()
+            sp.wait_for_timeout(300)
+            sp.screenshot(path=str(page_output / 'home-dark.png'), full_page=True)
+            sp.locator('#btn-theme-toggle').click()
+            print('[PASS] 10. Resume-first home displays saved article and renders both themes')
+
+            # Use actual toolbar controls after scrolling to a later section.
+            page.locator('#jump-target').scroll_into_view_if_needed()
+            page.locator('#lf-read-here-quick').click()
+            def current_reader_text():
+                return sp.evaluate("""async () => {
+                    const tabs = await chrome.tabs.query({ url: 'http://127.0.0.1:*/*' });
+                    const [result] = await chrome.scripting.executeScript({target: {tabId: tabs[0].id}, func: () => window.__testPlayer.chunks[window.__testPlayer.currentIndex].text});
+                    return result.result;
+                }""")
+            assert 'Jump target' in current_reader_text()
+            page.locator('#lf-btn-settings').click()
+            page.locator('#lf-section-next').click()
+            assert 'Later section' in current_reader_text()
+            page.locator('#lf-section-prev').click()
+            assert 'Jump target' in current_reader_text()
+            expect(page.locator('#lf-navigation-status')).to_contain_text('Next detected')
+            page.screenshot(path=str(page_output / 'reader-controls.png'))
+            page.locator('#lf-follow-scroll').check()
+            page.mouse.move(300, 300)
+            page.mouse.wheel(0, 1250)
+            page.wait_for_timeout(1200)
+            assert ('Later section' in current_reader_text() or 'jumping forward' in current_reader_text()), current_reader_text()
+            page.locator('#lf-btn-settings').click()
+            if not page.locator('#lf-follow-scroll').is_visible():
+                page.locator('#lf-btn-settings').click()
+            page.locator('#lf-follow-scroll').uncheck()
+            print('[PASS] 14. Read-here and heading controls jump directly to scrolled sections')
+
+            # Learn a nonstandard control through Choose Next without navigating on selection.
+            page.locator('#lf-choose-next').click()
+            page.locator('a[data-testid="next-link"]').click()
+            assert 'oreilly-ch4' in page.url
+            expect(page.locator('#lf-navigation-status')).to_contain_text('Next detected')
+            print('[PASS] 15. Choose Next captures the target without an accidental navigation')
+
+            # New destination must start before being removed from queue.
+            result = sp.evaluate("""async (url) => {
+                await chrome.storage.local.set({learnflow_playlist: [{url, title: 'Next chapter', addedAt: 1}]});
+                return await chrome.runtime.sendMessage({action: 'PLAYLIST_ADVANCE'});
+            }""", f'http://127.0.0.1:{port}/oreilly-ch5.html')
+            assert result.get('success'), result
+            assert sp.evaluate("async () => (await chrome.storage.local.get('learnflow_playlist')).learnflow_playlist") == []
+            result = sp.evaluate("""async () => {
+                await chrome.storage.local.set({learnflow_playlist: [{url: 'chrome://settings', title: 'Unsupported', addedAt: 2}]});
+                return await chrome.runtime.sendMessage({action: 'PLAYLIST_ADVANCE'});
+            }""")
+            assert not result.get('success'), 'Unsupported queue destinations must report failure'
+            assert len(sp.evaluate("async () => (await chrome.storage.local.get('learnflow_playlist')).learnflow_playlist")) == 1
+            print('[PASS] 11. Queue acknowledges new-page playback and preserves failed items')
+
+            # Real completion callback -> next document -> automatic reader start.
+            await_result = sp.evaluate("""async () => {
+                await chrome.storage.local.set({learnflow_playlist: [], learnflow_auto_advance_enabled: true, learnflow_nav_delay: 1});
+                const tabs = await chrome.tabs.query({ url: 'http://127.0.0.1:*/*' });
+                const source = tabs.find(tab => tab.url.includes('oreilly-ch4.html'));
+                const [result] = await chrome.scripting.executeScript({target: {tabId: source.id}, func: async () => {
+                    GeminiAI.generateAnkiCards = () => { throw new Error('Auto-advance must not wait for AI flashcards'); };
+                    const player = window.__testPlayer;
+                    player.setQueue([{type: 'text', text: 'The final sentence.', element: null}]);
+                    player.synth = {cancel() {}, speak(utterance) { window.__completionUtterance = utterance; }};
+                    player.isPlaying = true;
+                    await player._speakChunk(0);
+                    const progressBefore = document.querySelector('#lf-progress-text').textContent;
+                    window.__completionUtterance.onend();
+                    return {progressBefore, progressAfter: document.querySelector('#lf-progress-text').textContent};
+                }});
+                return result.result;
+            }""")
+            assert await_result['progressBefore'] != '100%', await_result
+            assert await_result['progressAfter'] == '100%', await_result
+            page.wait_for_url(f'http://127.0.0.1:{port}/oreilly-ch5.html', timeout=15000)
+            page.wait_for_selector('#learnflow-player-root', timeout=10000)
+            page.wait_for_selector('.learnflow-active-reading', timeout=10000)
+            print('[PASS] 13. Final sentence completes, navigates to next chapter, and resumes reading')
+
             assert not errors, f"Runtime errors detected: {errors}"
             print("[PASS] 8. Zero console/runtime errors across extension & page")
 
@@ -230,7 +415,7 @@ def run_tests():
         server.shutdown()
         shutil.rmtree(user_data_dir, ignore_errors=True)
 
-    print("\nALL 8 E2E BROWSER TESTS PASSED!")
+    print("\nALL 15 E2E BROWSER TESTS PASSED!")
 
 
 if __name__ == "__main__":

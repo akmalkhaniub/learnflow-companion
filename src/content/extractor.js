@@ -445,25 +445,27 @@ class ContentExtractor {
 
       // 5. NORMAL PROSE / HEADING
       // Avoid double-reading if a <li> contains <p> children (let the <p> handle it)
-      if (tag === 'li' && el.querySelector('p')) {
+      if ((tag === 'li' || tag === 'blockquote') && el.querySelector('p')) {
         return;
       }
 
       const text = this._cleanText(el.textContent).trim();
       if (!text || text.length < 3) return;
 
-      // Split into clean sentences
-      const sentences = text.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [text];
-      sentences.forEach(s => {
-        const cleanSentence = s.trim();
-        if (cleanSentence.length > 2) {
-          chunks.push({
-            type: 'text',
-            text: cleanSentence,
-            element: el
-          });
-        }
-      });
+      // Keep exact DOM offsets so repeated sentences and inline markup highlight correctly.
+      const rawText = el.textContent || '';
+      const sentences = typeof Intl.Segmenter === 'function'
+        ? Array.from(new Intl.Segmenter(document.documentElement.lang || 'en', { granularity: 'sentence' }).segment(rawText))
+        : Array.from(rawText.matchAll(/[^.!?]+(?:[.!?]+(?:["”’']+)?(?=\s|$)|$)/g), match => ({ segment: match[0], index: match.index }));
+      for (const sentence of sentences) {
+        const leading = sentence.segment.length - sentence.segment.trimStart().length;
+        const trimmed = sentence.segment.trim();
+        const spoken = this._cleanText(trimmed).trim();
+        if (!spoken) continue;
+        chunks.push({ type: 'text', text: spoken, element: el,
+          textStart: sentence.index + leading,
+          textEnd: sentence.index + leading + trimmed.length });
+      }
     });
 
     return chunks;

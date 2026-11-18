@@ -23,15 +23,19 @@ class GDriveSync {
             bookTitle: item.bookTitle || 'Tutorials',
             chapterTitle: item.chapterTitle || item.title,
             content: item.markdown,
+            images: item.images || [],
             timestamp: new Date().toISOString()
           })
         });
 
-        if (res.ok) {
-          return { success: true, method: 'webhook' };
+        const result = await res.json();
+        if (!res.ok || result.status !== 'success') throw new Error(result.message || `Drive upload failed (${res.status})`);
+        if ((item.images || []).length > 0 && result.imagesSaved !== item.images.length) {
+          throw new Error('Note uploaded, but figures were not confirmed. Copy and redeploy the updated Apps Script from Settings.');
         }
+        return { success: true, method: 'webhook', imagesSaved: result.imagesSaved || 0 };
       } catch (err) {
-        console.warn('[LearnFlow] Webhook upload failed, checking OAuth token:', err);
+        return { success: false, error: err.message, method: 'webhook' };
       }
     }
 
@@ -39,7 +43,7 @@ class GDriveSync {
     try {
       const token = await this._getAuthToken();
       if (!token) {
-        return { success: false, error: 'Google Drive not authenticated (configure in Side Panel)' };
+        return { success: false, skipped: true };
       }
 
       // 1. Get or create root "LearnFlow Vault" folder
@@ -57,6 +61,14 @@ class GDriveSync {
       // 4. Upload file
       const fileName = `${this._sanitizeFilename(item.chapterTitle || item.title)}.md`;
       const fileId = await this._createDriveFile(token, fileName, item.markdown, targetFolderId);
+      if (item.images?.length) {
+        const imageFolder = await this._getOrCreateFolder(token, 'images', targetFolderId);
+        for (const image of item.images) {
+          if (!/^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(image.dataUrl || '')) throw new Error('Invalid figure data');
+          const blob = await (await fetch(image.dataUrl)).blob();
+          await this._createDriveFile(token, image.filename, blob, imageFolder, blob.type);
+        }
+      }
 
       return { success: true, id: fileId, method: 'oauth' };
     } catch (e) {
@@ -83,7 +95,8 @@ class GDriveSync {
   }
 
   static async _getOrCreateFolder(token, folderName, parentId = null) {
-    let q = `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and trashed=false`;
+    const escapedName = folderName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    let q = `mimeType='application/vnd.google-apps.folder' and name='${escapedName}' and trashed=false`;
     if (parentId) {
       q += ` and '${parentId}' in parents`;
     }
@@ -93,6 +106,7 @@ class GDriveSync {
       headers: { Authorization: `Bearer ${token}` }
     });
     const searchJson = await searchRes.json();
+    if (!searchRes.ok) throw new Error(searchJson.error?.message || 'Drive folder lookup failed');
 
     if (searchJson.files && searchJson.files.length > 0) {
       return searchJson.files[0].id;
@@ -115,28 +129,25 @@ class GDriveSync {
     });
 
     const createJson = await createRes.json();
+    if (!createRes.ok || !createJson.id) throw new Error(createJson.error?.message || 'Drive folder creation failed');
     return createJson.id;
   }
 
-  static async _createDriveFile(token, fileName, content, parentId) {
+  static async _createDriveFile(token, fileName, content, parentId, mimeType = 'text/markdown') {
     const boundary = '-------314159265358979323846';
     const delimiter = `\r\n--${boundary}\r\n`;
     const closeDelimiter = `\r\n--${boundary}--`;
 
     const metadata = {
       name: fileName,
-      mimeType: 'text/markdown',
+      mimeType,
       parents: parentId ? [parentId] : []
     };
 
-    const multipartRequestBody =
-      delimiter +
-      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-      JSON.stringify(metadata) +
-      delimiter +
-      'Content-Type: text/markdown\r\n\r\n' +
-      content +
-      closeDelimiter;
+    const multipartRequestBody = new Blob([
+      delimiter, 'Content-Type: application/json; charset=UTF-8\r\n\r\n', JSON.stringify(metadata),
+      delimiter, `Content-Type: ${mimeType}\r\n\r\n`, content, closeDelimiter
+    ]);
 
     const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
       method: 'POST',
@@ -148,6 +159,7 @@ class GDriveSync {
     });
 
     const json = await res.json();
+    if (!res.ok || !json.id) throw new Error(json.error?.message || 'Drive file upload failed');
     return json.id;
   }
 

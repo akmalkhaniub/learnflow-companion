@@ -110,24 +110,7 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
-// Track exact tab URLs & titles automatically (catches YouTube SPA & O'Reilly SPA transitions reliably!)
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (!tab?.url || !tab.url.startsWith('http')) return;
-  if (changeInfo.status === 'complete' || changeInfo.title) {
-    const cleanTitle = (tab.title || '').replace(/^\(\d+\)\s*/, '').trim();
-    // Skip placeholder title "YouTube" while SPA video title is still loading
-    if (tab.url.includes('youtube.com/watch') && (!cleanTitle || cleanTitle.toLowerCase() === 'youtube')) {
-      return;
-    }
-    logPageVisit({
-      title: cleanTitle,
-      url: tab.url,
-      siteType: detectSiteTypeFromUrl(tab.url),
-      timestamp: Date.now()
-    });
-  }
-});
-
+// Learning history is recorded only after an explicit reader action.
 function detectSiteTypeFromUrl(url) {
   if (!url) return 'generic';
   if (url.includes('oreilly.com')) return 'oreilly';
@@ -211,26 +194,48 @@ async function saveToLocalDisk(payload) {
 /**
  * Advance Multi-Tab Playlist Queue
  */
-async function advancePlaylist() {
-  const data = await chrome.storage.local.get(['learnflow_playlist']);
-  let playlist = data.learnflow_playlist || [];
+let playlistAdvanceInFlight = null;
 
-  if (!playlist.length) return;
-
-  const nextItem = playlist.shift();
-  await chrome.storage.local.set({
-    learnflow_playlist: playlist,
-    learnflow_auto_play_next: true
-  });
-
-  const tabs = await chrome.tabs.query({ url: nextItem.url });
-  if (tabs.length > 0) {
-    const targetTab = tabs[0];
-    await chrome.tabs.update(targetTab.id, { active: true });
-    chrome.tabs.sendMessage(targetTab.id, { action: 'AUTO_START_READING' });
-  } else {
-    await chrome.tabs.create({ url: nextItem.url, active: true });
+async function startReadingUrl(url) {
+  const destination = new URL(url);
+  if (!['http:', 'https:'].includes(destination.protocol)) throw new Error('Open a web article or video to read.');
+  const tabs = await chrome.tabs.query({});
+  let tab = tabs.find(t => t.url === url);
+  tab = tab ? await chrome.tabs.update(tab.id, { active: true }) : await chrome.tabs.create({ url, active: true });
+  await chrome.windows.update(tab.windowId, { focused: true });
+  // Wait for the destination content script to acknowledge playback. A failed
+  // handoff leaves the queued item intact and is safe to retry.
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const current = await chrome.tabs.get(tab.id);
+    if (current.status === 'complete') {
+      try {
+        const result = await chrome.tabs.sendMessage(tab.id, { action: 'AUTO_START_READING' });
+        if (result?.success) return { success: true };
+        if (result?.error) throw new Error(result.error);
+      } catch (error) {
+        if (!/Receiving end|connection|port closed/i.test(error.message)) throw error;
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
+  throw new Error('Reader could not start. Refresh the destination page and try again.');
+}
+
+function advancePlaylist() {
+  if (playlistAdvanceInFlight) return playlistAdvanceInFlight;
+  playlistAdvanceInFlight = (async () => {
+    const data = await chrome.storage.local.get(['learnflow_playlist']);
+    const nextItem = (data.learnflow_playlist || [])[0];
+    if (!nextItem) throw new Error('Your queue is empty.');
+    await startReadingUrl(nextItem.url);
+    const latest = await chrome.storage.local.get(['learnflow_playlist']);
+    const remaining = latest.learnflow_playlist || [];
+    const index = remaining.findIndex(item => item.url === nextItem.url && item.addedAt === nextItem.addedAt);
+    if (index >= 0) remaining.splice(index, 1);
+    await chrome.storage.local.set({ learnflow_playlist: remaining });
+    return { success: true };
+  })().finally(() => { playlistAdvanceInFlight = null; });
+  return playlistAdvanceInFlight;
 }
 
 /**
@@ -322,7 +327,8 @@ async function recordArchivedItem(payload, localResult, gdriveResult) {
     localFile: localResult?.filename || null,
     imagesSaved: localResult?.imagesSaved || 0,
     transcriptCount: payload.transcriptCount || 0,
-    gdriveSynced: !!gdriveResult?.success
+    gdriveSynced: !!gdriveResult?.success,
+    gdriveError: gdriveResult?.skipped ? null : (gdriveResult?.error || null)
   });
 
   if (items.length > 500) {
@@ -334,6 +340,25 @@ async function recordArchivedItem(payload, localResult, gdriveResult) {
 
 // Handle runtime messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'FETCH_FIGURE_IMAGE') {
+    (async () => {
+      try {
+        const url = new URL(message.url);
+        if (!sender.tab || !['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid image request');
+        const response = await fetch(url.href, {credentials: 'include', signal: AbortSignal.timeout(10000)});
+        const mime = (response.headers.get('content-type') || '').split(';')[0];
+        if (!response.ok || !mime.startsWith('image/')) throw new Error('Image download failed');
+        const blob = await response.blob();
+        if (blob.size > 8 * 1024 * 1024) throw new Error('Image exceeds 8 MB');
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let binary = '';
+        for (let start = 0; start < bytes.length; start += 8192) binary += String.fromCharCode(...bytes.subarray(start, start + 8192));
+        sendResponse({dataUrl: `data:${mime};base64,${btoa(binary)}`});
+      } catch (error) { sendResponse({error: error.message}); }
+    })();
+    return true;
+  }
+
   if (message.action === 'ARCHIVE_PAGE') {
     (async () => {
       try {
@@ -380,9 +405,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
-  if (message.action === 'PLAYLIST_ADVANCE') {
-    advancePlaylist();
-    sendResponse({ success: true });
-    return false;
+  if (message.action === 'PLAYLIST_ADVANCE' || message.action === 'RESUME_READING') {
+    const task = message.action === 'PLAYLIST_ADVANCE' ? advancePlaylist() : startReadingUrl(message.url);
+    task.then(sendResponse).catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
   }
 });
