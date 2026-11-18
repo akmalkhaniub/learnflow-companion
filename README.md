@@ -1,15 +1,25 @@
-# 🎧 LearnFlow - Hands-Free Reader & Ask Gemini Companion (v1.2.0)
+# 🎧 LearnFlow - Hands-Free Reader & Ask Gemini Companion (v1.3.0)
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Gemini AI](https://img.shields.io/badge/AI-Gemini%20Nano%20%26%20Flash-purple.svg)](https://ai.google.dev/)
-[![Version](https://img.shields.io/badge/Version-1.2.0-orange.svg)](https://github.com/akmalkhaniub/learnflow-companion)
+[![Version](https://img.shields.io/badge/Version-1.3.0-orange.svg)](https://github.com/akmalkhaniub/learnflow-companion)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > Turn any documentation, technical book, or tutorial into a **continuous hands-free audiobook**, generate **spoken 2-minute executive briefs with Gemini**, whisper-summarize code blocks aloud, manage a **multi-tab learning queue**, and export **Anki flashcards** while automatically archiving to your **Local Obsidian Vault** and **Google Drive**.
 
 ---
 
-## 🌟 What's New in v1.2.0
+## What's New in v1.3.0
+
+Open **Study** in the side panel while viewing an article:
+
+- **Chapter outline:** Select a heading to start reading there. Refresh current section after moving through the article.
+- **Bookmarks with notes:** Save the current reading passage with a personal note, edit or delete it later, and resume from that passage across pages. Bookmarks remain on this device (up to 500); changed or removed passages report an error instead of jumping to an unrelated sentence.
+- **Section quizzes:** Request three multiple-choice questions, answer them, then reveal your score and explanations. Requires configured AI and sufficient section text. Cloud mode sends the current section to Gemini only when requested; personal bookmark notes are excluded. Check AI explanations against the source.
+
+Reload the unpacked extension at `chrome://extensions`, then refresh article tabs and reopen the side panel. Confirm **v1.3.0** in the header. A GitHub push does not update an installed extension automatically.
+
+## Earlier features (v1.2.0)
 
 * 💻 **Smart Code Whisperer:** Instead of robotic syntax, code blocks are automatically translated into 1 natural spoken sentence describing what the code does.
 * 📑 **Multi-Tab Playlist Queue:** Line up 5 chapters, tutorials, or YouTube videos across open tabs; LearnFlow autoplays through them in sequence like Spotify.

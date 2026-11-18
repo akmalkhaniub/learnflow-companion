@@ -12,6 +12,22 @@ function driveClient(fetch, settings = {gdrive_webhook_url: 'https://example.tes
 }
 const note = {title: 'Chapter', markdown: '![Figure](images/figure.png)', images: [{filename: 'figure.png', dataUrl: 'data:image/png;base64,YQ=='}]};
 
+test('Section quizzes accept fenced JSON and reject invalid answer keys and duplicate choices', () => {
+  const {client} = geminiClient({});
+  const questions = Array.from({length: 3}, () => ({question: 'Which?', choices: ['A', 'B', 'C', 'D'], correctIndex: 1, explanation: 'The section explains B.'}));
+  assert.equal(client.parseSectionQuiz('```json\n' + JSON.stringify(questions) + '\n```').length, 3);
+  questions[0].correctIndex = 4;
+  assert.throws(() => client.parseSectionQuiz(JSON.stringify(questions)), /incomplete/);
+  questions[0].correctIndex = 0; questions[0].choices[1] = 'a';
+  assert.throws(() => client.parseSectionQuiz(JSON.stringify(questions)), /incomplete/);
+  assert.throws(() => client.parseSectionQuiz('not JSON'), /unreadable/);
+});
+
+test('Section quizzes refuse insufficient source material before requesting AI', async () => {
+  const {client} = geminiClient({});
+  await assert.rejects(() => client.generateSectionQuiz('A heading'), /too short/);
+});
+
 test('Drive reports webhook application errors despite HTTP 200', async () => {
   const client = driveClient(async () => ({ok: true, json: async () => ({status: 'error', message: 'Quota exceeded'})}));
   const result = await client.upload(note);

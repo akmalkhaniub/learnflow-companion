@@ -568,6 +568,36 @@
 
   // Listen for messages from background / shortcuts / context menus / sidepanel
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'GET_STUDY_CONTEXT' || message.action === 'STUDY_JUMP') {
+      (async () => {
+        if (message.url && message.url !== getCanonicalUrl()) throw new Error('The page changed. Refresh the outline.');
+        const data = ContentExtractor.extract();
+        const chunks = data.chunks || [];
+        if (!chunks.length) throw new Error('No readable article found on this page.');
+        const outline = chunks.flatMap((c, index) => /^H[1-6]$/.test(c.element?.tagName || '') ? [{ index, text: c.text }] : []);
+        let index = playbackMode === 'article' && lastExtractedUrl === getCanonicalUrl() ? audioPlayer.currentIndex : 0;
+        index = Math.max(0, Math.min(index, chunks.length - 1));
+        if (message.action === 'STUDY_JUMP') {
+          const match = chunks[message.index]?.text === message.text ? message.index : chunks.findIndex(c => c.text === message.text);
+          if (match < 0) throw new Error('This passage has changed. Refresh the outline or save a new bookmark.');
+          await openPlayer();
+          playbackMode = 'article';
+          extractedData = data;
+          lastExtractedUrl = getCanonicalUrl();
+          lastExtractedText = data.contentEl?.textContent || '';
+          audioPlayer.setQueue(chunks);
+          learningUrl = window.location.href;
+          reportCurrentVisit();
+          audioPlayer.jumpToIndex(match);
+          return { success: true };
+        }
+        const start = outline.filter(h => h.index <= index).at(-1)?.index || 0;
+        const end = outline.find(h => h.index > index)?.index || chunks.length;
+        return { url: getCanonicalUrl(), title: data.title || document.title, index, text: chunks[index].text,
+          outline, sectionTitle: chunks[start].text, sectionText: chunks.slice(start, end).map(c => c.text || c.caption || '').join('\n').slice(0, 16000) };
+      })().then(sendResponse).catch(error => sendResponse({ error: error.message }));
+      return true;
+    }
     if (message.action === 'OPEN_PLAYER') {
       openPlayer().then(() => sendResponse({ visible: true }));
       return true;

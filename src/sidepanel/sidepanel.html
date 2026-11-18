@@ -23,6 +23,7 @@
   <!-- Navigation Tabs -->
   <nav class="tabs-nav">
     <button class="tab-btn active" data-tab="home">Home</button>
+    <button class="tab-btn" data-tab="study">Study</button>
     <button class="tab-btn" data-tab="gemini">Gemini</button>
     <button class="tab-btn" data-tab="playlist">Queue <span id="playlist-count">0</span></button>
     <button class="tab-btn" data-tab="vault">Vault <span id="vault-count">0</span></button>
@@ -49,6 +50,22 @@
     <p class="home-footer">Your place is saved on this device. Only pages you use with LearnFlow appear in learning history.</p>
   </section>
 
+  <section class="tab-content" id="tab-study">
+    <h2>Study this page</h2>
+    <button class="secondary-btn" id="study-refresh">Refresh current section</button>
+    <p id="study-status" role="status" aria-live="polite">Open an article to get started.</p>
+    <h3>Chapter outline</h3><div id="study-outline"></div>
+    <h3>Bookmark your place</h3>
+    <p id="study-passage"></p>
+    <label for="study-note">Personal note (optional)</label>
+    <textarea id="study-note" class="text-input" maxlength="4000" rows="3" placeholder="What do you want to remember?"></textarea>
+    <button class="primary-btn" id="study-save">Save current passage</button>
+    <h3>Section quiz</h3>
+    <p class="home-detail">Generate three questions from the current section. This sends section text to your configured AI provider. AI answers may contain mistakes.</p>
+    <button class="secondary-btn" id="study-quiz">Quiz this section</button>
+    <form id="study-questions"></form>
+    <h3>Saved bookmarks</h3><div id="study-bookmarks"></div>
+  </section>
   <section class="tab-content" id="tab-gemini">
     <div class="context-banner" id="gemini-active-tab-banner">
       <span class="context-icon">🌐</span>
@@ -229,5 +246,6 @@
 
   <script src="../utils/gemini_ai.js"></script>
   <script src="sidepanel.js"></script>
+  <script src="study.js"></script>
 </body>
 </html>

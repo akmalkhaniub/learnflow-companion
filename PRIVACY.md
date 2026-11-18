@@ -14,14 +14,14 @@ LearnFlow is an open-source, privacy-first personal learning companion built for
 ---
 
 ## 2. Storage & Cloud Sync
-* **Local Storage:** Your reading history, playlist queue, and preferences are stored locally in your browser via `chrome.storage.local`.
+* **Local Storage:** Your reading history, playlist queue, bookmarks with personal notes, and preferences are stored locally in your browser via `chrome.storage.local`. Bookmark notes are not sent to AI or Google Drive. You can edit or delete them in the Study tab.
 * **Local File Exports:** Archived notes and Markdown files are saved directly to your local computer's storage (e.g. `Downloads/LearnFlow_Vault/` or your configured Obsidian folder).
 * **Google Drive Sync (Optional):** If you configure Google Drive sync, notes and figures are transmitted exclusively to your personal Google Drive account using your own Google Apps Script webhook or Google OAuth token. No intermediary server has access to your files.
 
 ---
 
 ## 3. Third-Party Services
-* **Google Gemini API (Optional):** If you choose to supply a Google Gemini API key, prompt queries, relevant document excerpts, and figure images (for figure explanations) are sent directly to Google's official Gemini API endpoints for processing according to [Google's AI Terms of Service](https://ai.google.dev/terms).
+* **Google Gemini API (Optional):** If you choose to supply a Google Gemini API key, prompt queries, relevant document excerpts, and figure images (for figure explanations) are sent directly to Google's official Gemini API endpoints for processing according to [Google's AI Terms of Service](https://ai.google.dev/terms). Requesting a section quiz sends up to 16,000 characters from the current section; quiz answers and scores remain in the side panel and are not saved.
 
 ---
 

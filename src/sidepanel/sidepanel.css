@@ -554,3 +554,13 @@ button:disabled { opacity: .55; cursor: default; }
 .home-footer { border-top: 1px solid var(--border); padding-top: 18px; margin-top: 24px; color: var(--text-muted); font-size: 11px; }
 #home-status, .sync-error { color: var(--text-muted); overflow-wrap: anywhere; }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* Study tools remain usable in a narrow side panel. */
+.tabs-nav { overflow-x: auto; }
+#tab-study h3 { margin-top: 24px; }
+#study-outline { display: grid; gap: 6px; }
+#study-outline button { text-align: left; white-space: normal; }
+#study-passage, #study-bookmarks p { overflow-wrap: anywhere; max-height: 150px; overflow-y: auto; }
+#tab-study textarea { display: block; box-sizing: border-box; width: 100%; margin: 8px 0; }
+#study-questions fieldset { margin: 14px 0; border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+#study-questions label { display: flex; align-items: baseline; gap: 8px; margin: 10px 0; }
+#study-bookmarks button { margin: 4px; }

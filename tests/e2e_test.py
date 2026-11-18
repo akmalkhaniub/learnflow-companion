@@ -18,6 +18,7 @@ import socketserver
 import tempfile
 import threading
 import time
+import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 
@@ -91,7 +92,8 @@ class QuietHandler(http.server.BaseHTTPRequestHandler):
 
 
 def start_mock_server():
-    server = socketserver.TCPServer(("127.0.0.1", 0), QuietHandler)
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), QuietHandler)
+    server.daemon_threads = True
     port = server.server_address[1]
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
@@ -99,6 +101,7 @@ def start_mock_server():
 
 
 def run_tests():
+    sys.stdout.reconfigure(line_buffering=True)
     server, port = start_mock_server()
     user_data_dir = tempfile.mkdtemp(prefix="lf_e2e_")
     errors = []
@@ -367,6 +370,33 @@ def run_tests():
             expect(page.locator('#lf-navigation-status')).to_contain_text('Next detected')
             print('[PASS] 15. Choose Next captures the target without an accidental navigation')
 
+            # Study tools use the real content script; only generated quiz content is stubbed.
+            page.bring_to_front()
+            sp.locator('[data-tab="study"]').click()
+            expect(sp.locator('#study-outline button')).to_have_count(3)
+            sp.locator('#study-outline button').first.click()
+            expect(sp.locator('#study-passage')).to_contain_text('Architecting')
+            sp.locator('#study-note').fill('Remember the coordination pattern.')
+            sp.locator('#study-save').click()
+            expect(sp.locator('#study-bookmarks textarea')).to_have_value('Remember the coordination pattern.')
+            sp.locator('#study-bookmarks textarea').fill('Updated personal note')
+            sp.locator('#study-bookmarks button', has_text='Save note').click()
+            expect(sp.locator('#study-status')).to_have_text('Note saved.')
+            sp.locator('#study-bookmarks button', has_text='Read from here').click()
+            expect(sp.locator('#study-status')).to_have_text('Reading bookmarked passage.')
+            sp.evaluate('''() => { GeminiAI.generateSectionQuiz = async () => Array.from({length: 3}, (_, i) => ({question: 'Question ' + i, choices: ['Correct choice', 'B', 'C', 'D'], correctIndex: 0, explanation: 'Supported by the section.'})); }''')
+            sp.locator('#study-quiz').click()
+            expect(sp.locator('#study-questions fieldset')).to_have_count(3)
+            assert 'Supported by' not in sp.locator('#study-questions').inner_text()
+            for i in range(3):
+                sp.locator(f'input[name="quiz-{i}"][value="0"]').check()
+            sp.locator('#study-questions button').click()
+            expect(sp.locator('#study-status')).to_contain_text('3 / 3 correct')
+            sp.screenshot(path=str(navigation_artifacts / 'study-tools.png'))
+            sp.locator('#study-bookmarks button', has_text='Delete').click()
+            expect(sp.locator('#study-bookmarks')).to_have_text('No bookmarks yet.')
+            print('[PASS] 16. Study outline, bookmark notes, passage resume, deletion and quiz scoring')
+
             # New destination must start before being removed from queue.
             result = sp.evaluate("""async (url) => {
                 await chrome.storage.local.set({learnflow_playlist: [{url, title: 'Next chapter', addedAt: 1}]});
@@ -415,7 +445,7 @@ def run_tests():
         server.shutdown()
         shutil.rmtree(user_data_dir, ignore_errors=True)
 
-    print("\nALL 15 E2E BROWSER TESTS PASSED!")
+    print("\nALL 16 E2E BROWSER TESTS PASSED!")
 
 
 if __name__ == "__main__":

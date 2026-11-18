@@ -196,11 +196,16 @@ async function saveToLocalDisk(payload) {
  */
 let playlistAdvanceInFlight = null;
 
-async function startReadingUrl(url) {
+async function startReadingUrl(url, passage = null) {
   const destination = new URL(url);
   if (!['http:', 'https:'].includes(destination.protocol)) throw new Error('Open a web article or video to read.');
   const tabs = await chrome.tabs.query({});
-  let tab = tabs.find(t => t.url === url);
+  let tab = tabs.find(t => {
+    if (t.url === url) return true;
+    if (!passage || !t.url) return false;
+    try { const candidate = new URL(t.url); candidate.hash = ''; return candidate.href === url; }
+    catch { return false; }
+  });
   tab = tab ? await chrome.tabs.update(tab.id, { active: true }) : await chrome.tabs.create({ url, active: true });
   await chrome.windows.update(tab.windowId, { focused: true });
   // Wait for the destination content script to acknowledge playback. A failed
@@ -209,7 +214,9 @@ async function startReadingUrl(url) {
     const current = await chrome.tabs.get(tab.id);
     if (current.status === 'complete') {
       try {
-        const result = await chrome.tabs.sendMessage(tab.id, { action: 'AUTO_START_READING' });
+        const result = await chrome.tabs.sendMessage(tab.id, passage
+          ? { action: 'STUDY_JUMP', url, index: passage.index, text: passage.text }
+          : { action: 'AUTO_START_READING' });
         if (result?.success) return { success: true };
         if (result?.error) throw new Error(result.error);
       } catch (error) {
@@ -406,7 +413,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === 'PLAYLIST_ADVANCE' || message.action === 'RESUME_READING') {
-    const task = message.action === 'PLAYLIST_ADVANCE' ? advancePlaylist() : startReadingUrl(message.url);
+    const task = message.action === 'PLAYLIST_ADVANCE' ? advancePlaylist() : startReadingUrl(message.url, message.passage);
     task.then(sendResponse).catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
