@@ -1,13 +1,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const vm = require('node:vm');
+
+const ROOT_DIR = path.resolve(__dirname, '..');
+const readSource = relPath => fs.readFileSync(path.join(ROOT_DIR, relPath), 'utf8');
 
 function driveClient(fetch, settings = {gdrive_webhook_url: 'https://example.test/exec'}, identity) {
   const context = vm.createContext({fetch, Blob, console, chrome: {
     storage: {local: {get: async () => settings}}, identity, runtime: {}
   }});
-  vm.runInContext(fs.readFileSync('src/utils/gdrive.js', 'utf8').replace('export { GDriveSync };', 'globalThis.client = GDriveSync;'), context);
+  vm.runInContext(readSource('src/utils/gdrive.js').replace('export { GDriveSync };', 'globalThis.client = GDriveSync;'), context);
   return context.client;
 }
 const note = {title: 'Chapter', markdown: '![Figure](images/figure.png)', images: [{filename: 'figure.png', dataUrl: 'data:image/png;base64,YQ=='}]};
@@ -71,7 +75,7 @@ function audioClient(summarizeCodeBlock) {
     GeminiAI: {summarizeCodeBlock}, SpeechSynthesisUtterance: function(text) {this.text = text;},
     setInterval: () => 1, clearInterval() {}, console
   });
-  vm.runInContext(fs.readFileSync('src/content/audio_player.js', 'utf8'), context);
+  vm.runInContext(readSource('src/content/audio_player.js'), context);
   return {player: new context.window.AudioPlayer(), spoken};
 }
 test('Seeking past pending AI narration ignores the stale result and callback', async () => {
@@ -173,7 +177,7 @@ test('Auto-resume belongs to the destination in the same tab and is consumed onc
   const context = vm.createContext({window: {location}, URL, Date, sessionStorage: {
     getItem: key => data.get(key), setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key)
   }});
-  vm.runInContext(fs.readFileSync('src/content/auto_navigator.js', 'utf8'), context);
+  vm.runInContext(readSource('src/content/auto_navigator.js'), context);
   data.set('learnflow_navigation', JSON.stringify({from: location.href, to: 'https://example.test/chapter-2', timestamp: Date.now()}));
   assert.equal(await context.window.AutoNavigator.checkAutoResume(), false);
   location.href = 'https://example.test/unrelated';
@@ -208,7 +212,7 @@ function geminiClient(response) {
   const context = vm.createContext({window: {}, AbortSignal, console, chrome: {storage: {local: {get: async () => ({gemini_api_key: 'test-key-123456789'})}}},
     fetch: async (url, options) => { request = {url, options, body: JSON.parse(options.body)}; return response; }
   });
-  vm.runInContext(fs.readFileSync('src/utils/gemini_ai.js', 'utf8'), context);
+  vm.runInContext(readSource('src/utils/gemini_ai.js'), context);
   return {client: context.window.GeminiAI, request: () => request};
 }
 test('Figure AI sends pixels and context to a current model without storing interactions', async () => {
@@ -235,7 +239,7 @@ test('OReilly TOC fallback ignores the current chapter summary fragment', () => 
   const context = vm.createContext({URL, location, window: {location}, document: {
     querySelectorAll: selector => selector.startsWith('nav, aside') ? [{querySelectorAll: () => links}] : []
   }});
-  vm.runInContext(fs.readFileSync('src/content/auto_navigator.js', 'utf8'), context);
+  vm.runInContext(readSource('src/content/auto_navigator.js'), context);
   assert.equal(context.window.AutoNavigator.findNextTarget().href, links[2].href);
 });
 
@@ -245,7 +249,7 @@ test('Chapter buttons that replace content in place can resume without a URL cha
     document: {querySelector: () => ({textContent: 'New chapter'})},
     sessionStorage: {getItem: () => pending, removeItem: () => {pending = null;}}
   });
-  vm.runInContext(fs.readFileSync('src/content/auto_navigator.js', 'utf8'), context);
+  vm.runInContext(readSource('src/content/auto_navigator.js'), context);
   assert.equal(await context.window.AutoNavigator.checkAutoResume(), true);
   assert.equal(pending, null);
 });
