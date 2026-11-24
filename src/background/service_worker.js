@@ -6,10 +6,22 @@
 
 import { GDriveSync } from '../utils/gdrive.js';
 
-// Configure side panel to open on toolbar icon click
+// Open the compact Smart Bar on toolbar icon click (user can open the full Side Panel from the bar or Alt+Shift+L)
 chrome.sidePanel
-  .setPanelBehavior({ openPanelOnActionClick: true })
+  .setPanelBehavior({ openPanelOnActionClick: false })
   .catch((error) => console.error('[LearnFlow] Side panel config error:', error));
+
+chrome.action.onClicked.addListener(async (tab) => {
+  if (!tab?.id) return;
+  try {
+    await chrome.tabs.sendMessage(tab.id, { action: 'TOGGLE_PLAYER' });
+  } catch {
+    // Restricted pages (chrome://, New Tab, Web Store) have no content script — open Side Panel instead
+    if (tab.windowId) {
+      chrome.sidePanel.open({ windowId: tab.windowId }).catch(() => {});
+    }
+  }
+});
 
 // Register Context Menus on install
 chrome.runtime.onInstalled.addListener(() => {
@@ -410,6 +422,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     sendResponse({ success: true });
     return false;
+  }
+
+  if (message.action === 'OPEN_SIDEPANEL') {
+    (async () => {
+      try {
+        const windowId = sender.tab?.windowId || (await chrome.windows.getLastFocused())?.id;
+        if (!windowId) throw new Error('No active browser window found.');
+        await chrome.sidePanel.open({ windowId });
+        sendResponse({ success: true });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
   }
 
   if (message.action === 'PLAYLIST_ADVANCE' || message.action === 'RESUME_READING') {

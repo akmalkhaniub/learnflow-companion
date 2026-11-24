@@ -555,6 +555,13 @@
     onAddToQueueRequest: handleAddToQueue,
     onPlayRequest: () => handlePlay().catch(error => playerUI.showToast(error.message)),
     onRestartRequest: handleRestart,
+    onOpenSidebarRequest: () => {
+      chrome.runtime.sendMessage({ action: 'OPEN_SIDEPANEL' }, (res) => {
+        if (chrome.runtime.lastError || !res?.success) {
+          playerUI.showToast('Press Alt+Shift+L (or right-click → Open Side Panel) to open sidebar', 4500);
+        }
+      });
+    },
     onCloseRequest: () => {
       // Stop speech without wiping saved play progress, then remove bar
       window.speechSynthesis.cancel();
@@ -671,9 +678,10 @@
 
   const resumeNextPage = async (previousText = null) => {
     for (let attempt = 0; attempt < 30; attempt++) {
-      const candidate = ContentExtractor.extract();
-      const text = candidate.contentEl?.textContent || '';
-      if (candidate.chunks?.length && (previousText === null || text !== previousText)) {
+      await ensureFreshExtraction(true);
+      const chunks = extractedData?.chunks || [];
+      const text = extractedData?.contentEl?.textContent || chunks.map(c => c.text || '').join('\n');
+      if (chunks.length && (previousText === null || text !== previousText)) {
         await openPlayer();
         await handlePlay();
         playerUI.showToast('Reading next chapter');

@@ -12,6 +12,7 @@ class PlayerUI {
     this.onPlayRequest = handlers.onPlayRequest || null;
     this.onRestartRequest = handlers.onRestartRequest || null;
     this.onCloseRequest = handlers.onCloseRequest || null;
+    this.onOpenSidebarRequest = handlers.onOpenSidebarRequest || null;
     this.onReadHere = handlers.onReadHere;
     this.onSection = handlers.onSection;
     this.onNextPage = handlers.onNextPage;
@@ -42,6 +43,13 @@ class PlayerUI {
     document.body.appendChild(this.root);
     this.root.querySelector('#lf-btn-close')?.addEventListener('click', () => {
       if (this.onCloseRequest) this.onCloseRequest();
+    });
+    this.root.querySelector('#lf-btn-sidebar')?.addEventListener('click', () => {
+      if (this.onOpenSidebarRequest) {
+        this.onOpenSidebarRequest();
+      } else {
+        chrome.runtime.sendMessage({ action: 'OPEN_SIDEPANEL' });
+      }
     });
     this._makeDraggable(this.root.querySelector('.learnflow-bar'));
     this._loadSettings();
@@ -166,6 +174,9 @@ class PlayerUI {
         </button>
         <button class="learnflow-btn" id="lf-btn-archive" title="Save clean Markdown + Figures + Tables">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+        </button>
+        <button class="learnflow-btn" id="lf-btn-sidebar" title="Open Full Side Panel (Alt+Shift+L)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="15" y1="3" x2="15" y2="21"></line></svg>
         </button>
         <button class="learnflow-btn" id="lf-btn-settings" title="Settings & Dock Options">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
@@ -409,6 +420,9 @@ class PlayerUI {
         <button class="learnflow-btn learnflow-btn-primary" id="lf-yt-snapshot" title="Capture video screenshot + transcript">📸</button>
         <button class="learnflow-btn lf-gemini-btn" id="lf-yt-gemini" title="✨ Ask Gemini to summarize this video">✨</button>
         <button class="learnflow-btn" id="lf-yt-add-queue" title="➕ Add video to Playlist Queue">➕</button>
+        <button class="learnflow-btn" id="lf-btn-sidebar" title="Open Full Side Panel (Alt+Shift+L)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="15" y1="3" x2="15" y2="21"></line></svg>
+        </button>
         <button class="learnflow-btn" id="lf-btn-settings" title="Dock Options">⚙</button>
         <button class="learnflow-btn lf-close-btn" id="lf-btn-close" title="Close">✕</button>
       </div>
