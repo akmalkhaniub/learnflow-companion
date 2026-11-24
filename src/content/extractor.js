@@ -389,10 +389,10 @@ class ContentExtractor {
   }
 
   /**
-   * Check ALL same-origin iframes for embedded document content (multi-frame course/document pages)
+   * Check ALL same-origin iframes (including inside Shadow DOM) for embedded document content
    */
   static _extractFromAccessibleIframes() {
-    const iframes = Array.from(document.querySelectorAll('iframe'));
+    const iframes = this._querySelectorAllDeep(document, 'iframe');
     const allChunks = [];
     let firstBody = null;
     for (const frame of iframes) {

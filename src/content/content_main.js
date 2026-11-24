@@ -8,27 +8,43 @@
   // Do NOT render UI or track history; just respond to top-frame extraction requests!
   if (window !== window.top) {
     window.addEventListener('message', (event) => {
-      if (event.data?.type !== 'LEARNFLOW_EXTRACT_FRAME') return;
-      try {
-        const res = ContentExtractor.extract();
-        let chunks = res?.chunks || [];
-        if (!chunks.length) {
-          chunks = ContentExtractor._extractVisibleTextFallback(document.body);
+      if (event.data?.type === 'LEARNFLOW_EXTRACT_FRAME') {
+        try {
+          const res = ContentExtractor.extract();
+          let chunks = res?.chunks || [];
+          if (!chunks.length) {
+            chunks = ContentExtractor._extractVisibleTextFallback(document.body);
+          }
+          const serializable = chunks.map(c => ({
+            type: c.type || 'text',
+            text: c.text,
+            lang: c.lang || '',
+            caption: c.caption || '',
+            headingLevel: c.headingLevel || 0
+          }));
+          const textLength = serializable.reduce((sum, c) => sum + (c.text?.length || 0), 0);
+          const hasNextButton = !!AutoNavigator.findNextTarget();
+          window.top.postMessage({
+            type: 'LEARNFLOW_FRAME_CHUNKS',
+            reqId: event.data.reqId,
+            textLength,
+            hasNextButton,
+            chunks: serializable
+          }, '*');
+        } catch {
+          // Ignore restricted frame errors
         }
-        const serializable = chunks.map(c => ({
-          type: c.type || 'text',
-          text: c.text,
-          lang: c.lang || '',
-          caption: c.caption || '',
-          headingLevel: c.headingLevel || 0
-        }));
-        window.top.postMessage({
-          type: 'LEARNFLOW_FRAME_CHUNKS',
-          reqId: event.data.reqId,
-          chunks: serializable
-        }, '*');
-      } catch {
-        // Ignore restricted frame errors
+      } else if (event.data?.type === 'LEARNFLOW_CLICK_NEXT') {
+        try {
+          const nextEl = AutoNavigator.findNextTarget();
+          if (nextEl) {
+            chrome.storage.local.set({
+              learnflow_auto_play_next: true,
+              learnflow_auto_play_origin: window.location.origin,
+              learnflow_last_navigated: Date.now()
+            }).then(() => nextEl.click());
+          }
+        } catch {}
       }
     });
     return;
@@ -100,37 +116,57 @@
     savePlayProgress(index, audioPlayer.chunks.length);
   };
 
+  let mainContentFrameWindow = null;
+
   /**
-   * Ensure fresh extraction of the main reading area (critical for O'Reilly/skills.google SPAs!)
+   * Ensure fresh extraction of the main reading area (critical for O'Reilly/skills.google SPAs & multi-frame docs!)
    */
   const ensureFreshExtraction = async (force = false) => {
     if (YouTubeHandler.isYouTubeHost()) return null;
 
     if (force || !extractedData || lastExtractedUrl !== getCanonicalUrl() || !extractedData.chunks?.length) {
+      mainContentFrameWindow = null;
       extractedData = ContentExtractor.extract();
-      // If top frame only found a heading/header (<= 3 chunks) and iframes exist, gather from child frames too
-      if ((extractedData.chunks?.length || 0) <= 3 && document.querySelectorAll('iframe').length > 0) {
-        const extraChunks = await new Promise((resolve) => {
+
+      const topTextLen = (extractedData.chunks || []).reduce((s, c) => s + (c.text?.length || 0), 0);
+      const iframes = ContentExtractor._querySelectorAllDeep(document, 'iframe');
+
+      // On multi-frame pages (like skills.google), top frame often holds only a short heading/shell.
+      // Query ALL iframes (including inside Shadow DOM) and pick the main content frame!
+      if (iframes.length > 0 && ((extractedData.chunks?.length || 0) < 8 || topTextLen < 600)) {
+        const frameReplies = await new Promise((resolve) => {
           const reqId = `lf_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-          const collected = [];
+          const replies = [];
           const onMsg = (ev) => {
             if (ev.data?.type === 'LEARNFLOW_FRAME_CHUNKS' && ev.data.reqId === reqId && Array.isArray(ev.data.chunks)) {
-              collected.push(...ev.data.chunks.map(c => ({ ...c, element: null })));
+              replies.push({
+                win: ev.source,
+                textLength: ev.data.textLength || 0,
+                hasNextButton: !!ev.data.hasNextButton,
+                chunks: ev.data.chunks.map(c => ({ ...c, element: null }))
+              });
             }
           };
           window.addEventListener('message', onMsg);
-          document.querySelectorAll('iframe').forEach(frame => {
+          iframes.forEach(frame => {
             try {
               frame.contentWindow?.postMessage({ type: 'LEARNFLOW_EXTRACT_FRAME', reqId }, '*');
             } catch {}
           });
           setTimeout(() => {
             window.removeEventListener('message', onMsg);
-            resolve(collected);
-          }, 450);
+            resolve(replies);
+          }, 550);
         });
-        if (extraChunks.length > 0) {
-          extractedData.chunks = [...(extractedData.chunks || []), ...extraChunks];
+
+        if (frameReplies.length > 0) {
+          // Pick the frame with the richest content (preferring frames that also have a Next button)
+          frameReplies.sort((a, b) => (b.textLength + (b.hasNextButton ? 500 : 0)) - (a.textLength + (a.hasNextButton ? 500 : 0)));
+          const best = frameReplies[0];
+          if (best && best.chunks.length > 0 && best.textLength > topTextLen) {
+            mainContentFrameWindow = best.win;
+            extractedData.chunks = [...(extractedData.chunks || []), ...best.chunks];
+          }
         }
       }
       lastExtractedUrl = getCanonicalUrl();
@@ -401,7 +437,18 @@
     try {
       readerStatus(AutoNavigator.status());
       const advanced = await AutoNavigator.advanceToNext(seconds => readerStatus(`Next chapter in ${seconds}s…`), delay);
-      if (!advanced) readerStatus('Next page did not open. Choose Next, then click the book’s Next control.');
+      if (advanced) return;
+      // If Next button lives inside a cross-origin content iframe, tell that frame to click Next
+      const iframes = ContentExtractor._querySelectorAllDeep(document, 'iframe');
+      if (mainContentFrameWindow || iframes.length > 0) {
+        if (mainContentFrameWindow) {
+          mainContentFrameWindow.postMessage({ type: 'LEARNFLOW_CLICK_NEXT' }, '*');
+        } else {
+          iframes.forEach(f => { try { f.contentWindow?.postMessage({ type: 'LEARNFLOW_CLICK_NEXT' }, '*'); } catch {} });
+        }
+        return;
+      }
+      readerStatus('Next page did not open. Choose Next, then click the book’s Next control.');
     } catch (error) { readerStatus(`Next page failed: ${error.message}`); }
   };
 

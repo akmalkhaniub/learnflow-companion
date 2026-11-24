@@ -12,15 +12,33 @@ class AutoNavigator {
       'a[title*="next" i]', 'button[title*="next" i]',
       '[role="button"][aria-label*="next" i]', '[data-testid*="next" i]'
     ];
+    const deepQuery = (root, sel) => (typeof ContentExtractor !== 'undefined' && ContentExtractor._querySelectorAllDeep)
+      ? ContentExtractor._querySelectorAllDeep(root, sel)
+      : Array.from(root.querySelectorAll(sel));
+
+    const interactiveSel = 'a, button, link, [role=button], ql-button, md-filled-button, md-text-button, md-outlined-button';
     for (const selector of selectors) {
-      for (const el of document.querySelectorAll(selector)) {
-        const target = el.matches('a, button, link, [role=button]') ? el : el.closest('a, button, [role=button]') || el.querySelector('a, button, [role=button]');
+      for (const el of deepQuery(document, selector)) {
+        const target = el.matches(interactiveSel) ? el : el.closest(interactiveSel) || el.querySelector(interactiveSel);
         if (target && this._isUsable(target)) return target;
       }
     }
-    for (const el of document.querySelectorAll('a, button, [role=button]')) {
+    for (const el of deepQuery(document, interactiveSel)) {
       const text = (el.textContent || '').trim().replace(/\s+/g, ' ');
-      if (/^next(?:\s|[:→›»]|$)/i.test(text) && this._isUsable(el)) return el;
+      if (/^(next|continue)(?:\s|[:→›»]|$)/i.test(text) && this._isUsable(el)) return el;
+    }
+    // Check same-origin iframes (e.g. skills.google embedded document/lab frames)
+    for (const frame of deepQuery(document, 'iframe')) {
+      try {
+        const fdoc = frame.contentDocument;
+        if (!fdoc) continue;
+        for (const el of deepQuery(fdoc, interactiveSel)) {
+          const text = (el.textContent || '').trim().replace(/\s+/g, ' ');
+          if ((/^next(?:\s|[:→›»]|$)/i.test(text) || el.matches('[aria-label*="next" i], a[rel="next"]')) && this._isUsable(el)) {
+            return el;
+          }
+        }
+      } catch {}
     }
     // Use actual ordered book TOC links, never invent the next chapter URL.
     const current = new URL(location.href);
