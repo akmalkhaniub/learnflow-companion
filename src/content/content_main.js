@@ -412,7 +412,7 @@
       audioPlayer.play();
       if (playerUI) playerUI.showToast('🎙️ Playing Gemini Audio Briefing...');
     } catch (err) {
-      console.error('[LearnFlow] Gemini Brief error:', err);
+      console.warn('[LearnFlow] Gemini Brief unavailable:', err?.message || err);
       if (playerUI) playerUI.showToast('Gemini Brief: ' + err.message);
     }
   };
