@@ -223,7 +223,7 @@
         }
       }
       lastExtractedUrl = getCanonicalUrl();
-      lastExtractedText = extractedData.contentEl?.textContent || null;
+      lastExtractedText = (extractedData.chunks || []).map(c => c.text || '').join('\n') || extractedData.contentEl?.textContent || null;
       if (extractedData.chunks && extractedData.chunks.length > 0) {
         playbackMode = 'article';
         audioPlayer.setQueue(extractedData.chunks);
@@ -568,6 +568,7 @@
     },
     onCloseRequest: () => {
       // Stop speech without wiping saved play progress, then remove bar
+      sessionStorage.removeItem('learnflow_bar_open');
       window.speechSynthesis.cancel();
       audioPlayer.isPlaying = false;
       audioPlayer.isPaused = false;
@@ -578,6 +579,7 @@
   });
 
   const openPlayer = async () => {
+    sessionStorage.setItem('learnflow_bar_open', '1');
     if (!playerUI.isVisible()) {
       playerUI.init();
     }
@@ -681,12 +683,12 @@
   }
 
   const resumeNextPage = async (previousText = null) => {
+    await openPlayer();
     for (let attempt = 0; attempt < 30; attempt++) {
       await ensureFreshExtraction(true);
       const chunks = extractedData?.chunks || [];
-      const text = extractedData?.contentEl?.textContent || chunks.map(c => c.text || '').join('\n');
+      const text = chunks.map(c => c.text || '').join('\n') || extractedData?.contentEl?.textContent || '';
       if (chunks.length && (previousText === null || text !== previousText)) {
-        await openPlayer();
         await handlePlay();
         playerUI.showToast('Reading next chapter');
         return;
@@ -725,12 +727,16 @@
   // Log initial visit (wait 1.2s so YouTube/SPA real title has mounted)
   setTimeout(reportCurrentVisit, 1200);
 
-  // Check if we arrived here through full-page Auto-Advance
+  // Check if we arrived here through full-page Auto-Advance, or if user left the Smart Bar open on this tab
   const shouldAutoResume = await AutoNavigator.checkAutoResume();
   if (shouldAutoResume && !YouTubeHandler.isYouTubeHost()) {
     setTimeout(async () => {
       resumeNextPage().catch(error => playerUI.showToast(error.message));
-    }, 1500);
+    }, 1200);
+  } else if (sessionStorage.getItem('learnflow_bar_open') === '1' && !YouTubeHandler.isYouTubeHost()) {
+    setTimeout(() => {
+      openPlayer().catch(() => {});
+    }, 600);
   }
 
   // Listen for messages from background / shortcuts / context menus / sidepanel
@@ -770,6 +776,7 @@
       return true;
     } else if (message.action === 'TOGGLE_PLAYER') {
       if (playerUI.isVisible()) {
+        sessionStorage.removeItem('learnflow_bar_open');
         window.speechSynthesis.cancel();
         audioPlayer.isPlaying = false;
         audioPlayer.isPaused = false;
