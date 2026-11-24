@@ -331,7 +331,7 @@
         let flashcardSection = '';
         try {
           const rawSample = (data.contentEl.innerText || data.contentEl.textContent || '').trim().substring(0, 10000);
-          const ankiCards = automatic ? '' : await GeminiAI.generateAnkiCards(rawSample);
+          const ankiCards = automatic ? '' : await AIRouter.generateAnkiCards(rawSample);
           if (ankiCards && ankiCards.includes('Q:')) {
             flashcardSection = `\n\n## 📇 Active Recall & Flashcards\n\n${ankiCards}\n`;
           }
@@ -402,7 +402,7 @@
         rawText = (data.contentEl.innerText || data.contentEl.textContent || '').trim().substring(0, 20000);
       }
 
-      const brief = await GeminiAI.generateAudioBrief(rawText);
+      const brief = await AIRouter.generateAudioBrief(rawText);
 
       const sentences = brief.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [brief];
       const briefChunks = sentences.map(s => ({ type: 'text', text: s.trim(), element: null }));

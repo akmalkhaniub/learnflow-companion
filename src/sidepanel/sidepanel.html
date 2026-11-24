@@ -70,6 +70,7 @@
     <div class="context-banner" id="gemini-active-tab-banner">
       <span class="context-icon">🌐</span>
       <span class="context-title" id="active-tab-title">Detecting active page...</span>
+      <span id="gemini-route-badge" style="margin-left: auto; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); white-space: nowrap;">⚡ Hybrid AI</span>
     </div>
 
     <!-- Inline API Key Setup Banner (shown automatically until user adds key or Nano is active) -->
@@ -170,18 +171,56 @@
   <!-- Tab 4: Settings & Cloud Sync -->
   <section class="tab-content" id="tab-settings">
     <div class="settings-card">
-      <h3>✨ Gemini AI Configuration</h3>
-      <p class="setting-desc">Supports on-device <b>Gemini Nano</b> (built into Chrome) or the <b>Gemini cloud API</b> (Free tier, also enables Figure Vision narration!).</p>
-      
+      <h3>✨ AI Provider &amp; Hybrid Configuration</h3>
+      <p class="setting-desc">Switch between <b>Firebase AI Logic</b> (Hybrid on-device Gemini Nano + Cloud fallback with App Check) and <b>Direct Gemini</b> (API key / Chrome Nano).</p>
+
       <div class="form-group">
-        <label>Google Gemini API Key:</label>
-        <input type="password" id="setting-gemini-key" class="text-input" placeholder="AIzaSy...">
-        <span class="folder-status-text">Get a free key from <a href="https://aistudio.google.com" target="_blank" class="accent-link">Google AI Studio</a></span>
+        <label for="setting-ai-provider">Active AI Provider:</label>
+        <select id="setting-ai-provider" class="text-input">
+          <option value="firebase_ai_logic">Firebase AI Logic (Hybrid: On-Device + Cloud)</option>
+          <option value="direct_gemini">Direct Gemini (API Key / Chrome Nano)</option>
+        </select>
       </div>
-      <div class="form-group"><label for="setting-gemini-model">Cloud model</label><input class="text-input" id="setting-gemini-model" value="gemini-3.5-flash-lite"><span class="folder-status-text">Figures send the image and nearby text to Gemini. API usage may incur charges.</span></div>
-      <button class="secondary-btn" id="btn-test-gemini">Test AI connection</button>
-      <p id="gemini-test-status" role="status"></p>
-      <button class="primary-btn" id="btn-save-gemini-key">Save Gemini Key</button>
+
+      <div id="firebase-settings-panel">
+        <div class="form-group">
+          <label for="setting-firebase-config">Firebase Web Config (JSON from Firebase Console):</label>
+          <textarea id="setting-firebase-config" class="text-input" rows="4" placeholder='{"apiKey":"...","authDomain":"...","projectId":"...","appId":"..."}'></textarea>
+        </div>
+        <div class="form-group">
+          <label for="setting-appcheck-token">Firebase App Check Debug Token:</label>
+          <input type="password" id="setting-appcheck-token" class="text-input" placeholder="App Check debug token (or 'true' to log a new one)">
+          <span class="folder-status-text">Required by Firebase AI Logic. Generate in Firebase Console → App Check → Manage debug tokens.</span>
+        </div>
+        <div class="form-group">
+          <label for="setting-firebase-mode">Hybrid Inference Mode:</label>
+          <select id="setting-firebase-mode" class="text-input">
+            <option value="prefer_on_device">Prefer On-Device (Gemini Nano → Cloud fallback)</option>
+            <option value="only_in_cloud">Cloud Only (Firebase AI Logic)</option>
+            <option value="only_on_device">On-Device Only (Strict Offline Gemini Nano)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="setting-firebase-model">Cloud Fallback Model:</label>
+          <input type="text" id="setting-firebase-model" class="text-input" value="gemini-2.5-flash-lite">
+        </div>
+        <button class="primary-btn" id="btn-save-firebase-config">Save Firebase AI Settings</button>
+      </div>
+
+      <div id="direct-gemini-settings-panel" style="display: none;">
+        <div class="form-group">
+          <label>Google Gemini API Key:</label>
+          <input type="password" id="setting-gemini-key" class="text-input" placeholder="AIzaSy...">
+          <span class="folder-status-text">Get a free key from <a href="https://aistudio.google.com" target="_blank" class="accent-link">Google AI Studio</a></span>
+        </div>
+        <div class="form-group"><label for="setting-gemini-model">Cloud model</label><input class="text-input" id="setting-gemini-model" value="gemini-3.5-flash-lite"><span class="folder-status-text">Figures send the image and nearby text to Gemini. API usage may incur charges.</span></div>
+        <button class="primary-btn" id="btn-save-gemini-key">Save Gemini Key</button>
+      </div>
+
+      <div style="margin-top: 10px;">
+        <button class="secondary-btn" id="btn-test-gemini">Test AI connection</button>
+        <p id="gemini-test-status" role="status"></p>
+      </div>
       <div id="nano-status-label" class="status-msg" style="margin-top: 8px;"></div>
     </div>
 
@@ -245,6 +284,8 @@
   </section>
 
   <script src="../utils/gemini_ai.js"></script>
+  <script src="../utils/firebase_ai_provider.js"></script>
+  <script src="../utils/ai_router.js"></script>
   <script src="sidepanel.js"></script>
   <script src="study.js"></script>
 </body>

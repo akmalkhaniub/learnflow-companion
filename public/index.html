@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LearnFlow Companion — Hybrid AI Technical Reader</title>
+  <style>
+    :root { --bg: #f8fafc; --card: #ffffff; --text: #0f172a; --muted: #475569; --accent: #4f46e5; --border: #e2e8f0; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0b1120; --card: #111827; --text: #f8fafc; --muted: #94a3b8; --accent: #818cf8; --border: #1e293b; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 48px 20px; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(79,70,229,0.12); color: var(--accent); }
+    h1 { font-size: 2.25rem; margin: 12px 0 8px; }
+    p.lead { font-size: 1.1rem; color: var(--muted); max-width: 680px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin: 28px 0; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+    .card h3 { margin: 0 0 8px; font-size: 1rem; }
+    .card p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+    code, pre { background: rgba(148,163,184,0.14); border-radius: 8px; font-family: ui-monospace, monospace; }
+    pre { padding: 14px; overflow-x: auto; font-size: 0.85rem; }
+    a.btn { display: inline-block; margin-top: 12px; padding: 10px 18px; border-radius: 10px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <span class="badge">#BuildHybridAI 2026 · Firebase AI Logic + App Check</span>
+    <h1>LearnFlow Companion</h1>
+    <p class="lead">A hands-free, AI-powered technical reader for Google Skills, O'Reilly, and YouTube. Runs on-device with Chrome Gemini Nano when possible and falls back to Gemini in the cloud via Firebase AI Logic + App Check.</p>
+    <a class="btn" href="https://github.com/akmalkhaniub/learnflow-companion" target="_blank" rel="noopener">View Open-Source Repo on GitHub ↗</a>
+
+    <div class="grid">
+      <div class="card">
+        <h3>⚡ On-Device (PREFER_ON_DEVICE)</h3>
+        <p>Code Whisperer explanations, 2-minute section briefings, Anki flashcards, and 3-question Study Quizzes run locally via Gemini Nano at zero cost and low latency.</p>
+      </div>
+      <div class="card">
+        <h3>☁️ Cloud Fallback (ONLY_IN_CLOUD)</h3>
+        <p>Multimodal Figure Vision (explaining complex architecture diagrams) and fallback inference route securely through Firebase AI Logic protected by App Check.</p>
+      </div>
+      <div class="card">
+        <h3>🔌 Pluggable AI Router</h3>
+        <p>Switch cleanly in Settings between Firebase AI Logic (Hybrid) and Direct Gemini (API Key / Chrome Nano) without changing your workflow.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Quick Setup</h3>
+      <pre>git clone https://github.com/akmalkhaniub/learnflow-companion.git
+cd learnflow-companion
+npm install
+npm run build</pre>
+      <p>Load the folder as an unpacked extension in <code>chrome://extensions/</code>, open Settings in the Side Panel, paste your Firebase Web Config JSON + App Check debug token, and click <strong>Test AI connection</strong>.</p>
+    </div>
+  </main>
+</body>
+</html>

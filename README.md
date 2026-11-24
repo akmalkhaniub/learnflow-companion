@@ -1,13 +1,33 @@
-# 🎧 LearnFlow - Hands-Free Reader & Ask Gemini Companion (v1.3.0)
+# 🎧 LearnFlow - Hands-Free Reader & Hybrid AI Companion (v1.4.0)
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
+[![Firebase AI Logic](https://img.shields.io/badge/Firebase-AI%20Logic%20Hybrid-orange.svg)](https://firebase.google.com/docs/ai-logic/hybrid)
 [![Gemini AI](https://img.shields.io/badge/AI-Gemini%20Nano%20%26%20Flash-purple.svg)](https://ai.google.dev/)
-[![Version](https://img.shields.io/badge/Version-1.3.0-orange.svg)](https://github.com/akmalkhaniub/learnflow-companion)
+[![Version](https://img.shields.io/badge/Version-1.4.0-orange.svg)](https://github.com/akmalkhaniub/learnflow-companion)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> Turn any documentation, technical book, or tutorial into a **continuous hands-free audiobook**, generate **spoken 2-minute executive briefs with Gemini**, whisper-summarize code blocks aloud, manage a **multi-tab learning queue**, and export **Anki flashcards** while automatically archiving to your **Local Obsidian Vault** and **Google Drive**.
+> Turn any documentation, technical book, or tutorial into a **continuous hands-free audiobook**, powered by **Firebase AI Logic (Hybrid On-Device Gemini Nano + Cloud Fallback with App Check)** and a pluggable AI provider router.
 
 ---
+
+## What's New in v1.4.0 (#BuildHybridAI 2026)
+
+- **Firebase AI Logic (Hybrid Inference) + App Check:** Routes text tasks (Code Whisperer, 2-min Audio Brief, Study Quizzes, Anki Flashcards, Vault Search) through `InferenceMode.PREFER_ON_DEVICE` (Chrome Gemini Nano with automatic Cloud fallback) and multimodal **Figure Vision** through `InferenceMode.ONLY_IN_CLOUD`, secured with Firebase App Check.
+- **Pluggable AI Provider Switcher (`AIRouter`):** Switch cleanly in **Settings** between `Firebase AI Logic (Hybrid)` and `Direct Gemini (API Key / Chrome Nano)` (preserving existing `GeminiAI` behavior and enabling future providers).
+- **Live Hybrid Route Badge:** Shows whether the latest AI response executed `⚡ On-Device` or `☁️ Cloud` with latency in milliseconds.
+- **Smart Bar + Multi-Frame & Shadow DOM Highlighting:** Clicking the extension icon opens the compact floating/dockable Smart Bar (with a one-click button to open the full Side Panel), plus word-by-word highlighting inside cross-frame (`skills.google`) and Shadow DOM pages and automatic Smart Bar resume on next-page navigation.
+
+### Build & Run Locally (Firebase AI Logic)
+
+```bash
+npm install
+npm run build        # Bundles firebase/app, firebase/app-check, and firebase/ai into src/vendor/
+```
+
+1. Open `chrome://extensions/`, enable **Developer mode**, and click **Load unpacked** on this folder.
+2. Create a Firebase project in the [Firebase Console](https://console.firebase.google.com/), enable **Firebase AI Logic** and **App Check** (create an App Check debug token).
+3. Open the LearnFlow Side Panel → **Settings** → paste your Firebase Web Config JSON and App Check debug token → click **Save Firebase AI Settings** → **Test AI connection**.
+4. *(Optional)* Deploy the companion landing page to Firebase Hosting: `firebase deploy --only hosting`.
 
 ## What's New in v1.3.0
 

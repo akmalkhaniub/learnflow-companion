@@ -141,23 +141,44 @@ async function detectActiveTab() {
 /**
  * Handle Ask Gemini Tab
  */
+async function updateRouteBadge() {
+  const badge = document.getElementById('gemini-route-badge');
+  if (!badge) return;
+  try {
+    const data = await chrome.storage.local.get(['learnflow_ai_provider', 'learnflow_last_ai_meta']);
+    const provider = data.learnflow_ai_provider || 'firebase_ai_logic';
+    const meta = data.learnflow_last_ai_meta;
+    if (meta && meta.provider === provider) {
+      const icon = meta.route === 'on-device' ? '⚡ On-Device' : '☁️ Cloud';
+      const ms = meta.latencyMs ? ` · ${meta.latencyMs}ms` : '';
+      badge.textContent = `${icon} (${meta.model || 'AI'})${ms}`;
+      badge.title = `Active provider: ${provider}`;
+    } else {
+      badge.textContent = provider === 'firebase_ai_logic' ? '🔥 Firebase AI Logic' : '✨ Direct Gemini';
+    }
+  } catch {}
+}
+
 async function initGeminiTab() {
   const setupBanner = document.getElementById('gemini-setup-banner');
   const inlineKeyInput = document.getElementById('inline-gemini-key');
   const inlineSaveBtn = document.getElementById('btn-inline-save-gemini');
 
   const refreshSetupBanner = async () => {
-    const status = await GeminiAI.isAvailable();
+    const status = await AIRouter.isAvailable();
     if (setupBanner) {
       setupBanner.style.display = status.available ? 'none' : 'block';
     }
+    await updateRouteBadge();
   };
   await refreshSetupBanner();
 
   inlineSaveBtn?.addEventListener('click', async () => {
     const key = (inlineKeyInput?.value || '').trim();
     if (!key) return;
-    await chrome.storage.local.set({ gemini_api_key: key });
+    await chrome.storage.local.set({ gemini_api_key: key, learnflow_ai_provider: 'direct_gemini' });
+    const providerSelect = document.getElementById('setting-ai-provider');
+    if (providerSelect) providerSelect.value = 'direct_gemini';
     const settingsInput = document.getElementById('setting-gemini-key');
     if (settingsInput) settingsInput.value = key;
     await refreshSetupBanner();
@@ -192,10 +213,11 @@ async function initGeminiTab() {
   document.getElementById('chip-search-vault')?.addEventListener('click', async () => {
     const data = await chrome.storage.local.get(['learnflow_vault_items']);
     const items = data.learnflow_vault_items || [];
-    responseBox.innerHTML = `<em>🔍 Searching across ${items.length} saved vault items with Gemini...</em>`;
-    const ans = await GeminiAI.searchVault(items, queryInput.value.trim() || 'Summarize the technical topics I have been studying recently');
+    responseBox.innerHTML = `<em>🔍 Searching across ${items.length} saved vault items with AI...</em>`;
+    const ans = await AIRouter.searchVault(items, queryInput.value.trim() || 'Summarize the technical topics I have been studying recently');
     lastGeminiResponse = ans;
     responseBox.textContent = ans;
+    await updateRouteBadge();
     if (actionBar) actionBar.style.display = 'flex';
   });
 
@@ -371,9 +393,10 @@ async function executeGeminiQuery(prompt) {
       }
     }
 
-    const answer = await GeminiAI.query(prompt, pageContext);
+    const answer = await AIRouter.query(prompt, pageContext);
     lastGeminiResponse = answer;
     responseBox.textContent = answer;
+    await updateRouteBadge();
     if (actionBar) actionBar.style.display = 'flex';
   } catch (e) {
     responseBox.innerHTML = `<span style="color: #dc2626;">Error: ${escapeHtml(e.message)}</span>`;
@@ -562,6 +585,11 @@ async function initSettings() {
     'learnflow_preferred_rate',
     'learnflow_nav_delay',
     'learnflow_preferred_voice',
+    'learnflow_ai_provider',
+    'learnflow_firebase_config',
+    'learnflow_appcheck_debug_token',
+    'learnflow_firebase_mode',
+    'learnflow_firebase_model',
     'gemini_api_key', 'gemini_model',
     'obsidian_vault_folder'
   ]);
@@ -577,6 +605,72 @@ async function initSettings() {
     showSettingsMsg(`Obsidian/Local folder set to: Downloads/${val}`);
   });
 
+  // AI Provider Switcher (Firebase AI Logic vs Direct Gemini vs future providers)
+  const providerSelect = document.getElementById('setting-ai-provider');
+  const firebasePanel = document.getElementById('firebase-settings-panel');
+  const directPanel = document.getElementById('direct-gemini-settings-panel');
+  const toggleProviderPanels = (providerId) => {
+    const isFirebase = providerId === 'firebase_ai_logic';
+    if (firebasePanel) firebasePanel.style.display = isFirebase ? 'block' : 'none';
+    if (directPanel) directPanel.style.display = isFirebase ? 'none' : 'block';
+  };
+
+  const activeProvider = data.learnflow_ai_provider || 'firebase_ai_logic';
+  if (providerSelect) {
+    providerSelect.value = activeProvider;
+    toggleProviderPanels(activeProvider);
+    providerSelect.addEventListener('change', async () => {
+      const next = providerSelect.value;
+      await AIRouter.setActiveProviderId(next);
+      toggleProviderPanels(next);
+      await updateRouteBadge();
+      showSettingsMsg(`Switched AI provider to: ${next === 'firebase_ai_logic' ? 'Firebase AI Logic (Hybrid)' : 'Direct Gemini'}`);
+    });
+  }
+
+  const fbConfigInput = document.getElementById('setting-firebase-config');
+  const fbTokenInput = document.getElementById('setting-appcheck-token');
+  const fbModeSelect = document.getElementById('setting-firebase-mode');
+  const fbModelInput = document.getElementById('setting-firebase-model');
+  if (fbConfigInput && data.learnflow_firebase_config) {
+    fbConfigInput.value = typeof data.learnflow_firebase_config === 'string'
+      ? data.learnflow_firebase_config
+      : JSON.stringify(data.learnflow_firebase_config, null, 2);
+  }
+  if (fbTokenInput && data.learnflow_appcheck_debug_token) {
+    fbTokenInput.value = data.learnflow_appcheck_debug_token;
+  }
+  if (fbModeSelect) fbModeSelect.value = data.learnflow_firebase_mode || 'prefer_on_device';
+  if (fbModelInput) fbModelInput.value = data.learnflow_firebase_model || 'gemini-2.5-flash-lite';
+
+  document.getElementById('btn-save-firebase-config')?.addEventListener('click', async () => {
+    const rawCfg = (fbConfigInput?.value || '').trim();
+    if (!rawCfg) {
+      showSettingsMsg('Paste your Firebase Web Config JSON first.');
+      return;
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(rawCfg);
+    } catch {
+      showSettingsMsg('Invalid JSON in Firebase Web Config.');
+      return;
+    }
+    if (!parsed.apiKey || !parsed.projectId || !parsed.appId) {
+      showSettingsMsg('Firebase Config must include apiKey, projectId, and appId.');
+      return;
+    }
+    await chrome.storage.local.set({
+      learnflow_ai_provider: 'firebase_ai_logic',
+      learnflow_firebase_config: parsed,
+      learnflow_appcheck_debug_token: (fbTokenInput?.value || '').trim(),
+      learnflow_firebase_mode: fbModeSelect?.value || 'prefer_on_device',
+      learnflow_firebase_model: (fbModelInput?.value || 'gemini-2.5-flash-lite').trim()
+    });
+    await updateRouteBadge();
+    showSettingsMsg('Firebase AI Logic + App Check settings saved.');
+  });
+
   const modelInput = document.getElementById('setting-gemini-model');
   modelInput.value = data.gemini_model || 'gemini-3.5-flash-lite';
   const geminiInput = document.getElementById('setting-gemini-key');
@@ -588,18 +682,28 @@ async function initSettings() {
     const key = geminiInput.value.trim();
     await chrome.storage.local.set({ gemini_api_key: key });
     await chrome.storage.local.set({gemini_model: modelInput.value.trim() || 'gemini-3.5-flash-lite'});
+    await updateRouteBadge();
     showSettingsMsg('Gemini API key and model saved.');
   });
 
   document.getElementById('btn-test-gemini').addEventListener('click', async event => {
     const label = document.getElementById('gemini-test-status');
     event.target.disabled = true;
-    label.textContent = 'Testing saved settings…';
+    label.textContent = 'Testing active AI provider…';
     try {
-      const status = await GeminiAI.isAvailable();
-      if (status.mode !== 'cloud') throw new Error('Save your Gemini API key first.');
-      await GeminiAI.query('Reply with OK.');
-      label.textContent = 'AI connection works. Figure explanations also require an accessible image.';
+      const status = await AIRouter.isAvailable();
+      if (!status.available) {
+        throw new Error(
+          status.provider === 'firebase_ai_logic'
+            ? 'Save your Firebase Web Config + App Check token first.'
+            : 'Save your Gemini API key first.'
+        );
+      }
+      await AIRouter.query('Reply with OK.');
+      await updateRouteBadge();
+      const meta = (await chrome.storage.local.get(['learnflow_last_ai_meta'])).learnflow_last_ai_meta;
+      const routeInfo = meta ? ` (${meta.route === 'on-device' ? 'On-Device Nano' : 'Cloud'} · ${meta.model})` : '';
+      label.textContent = `AI connection works${routeInfo}. Figure explanations also require an accessible image.`;
     } catch (error) { label.textContent = error.message; }
     finally { event.target.disabled = false; }
   });

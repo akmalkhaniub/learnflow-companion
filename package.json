@@ -1,0 +1,16 @@
+{
+  "name": "learnflow-companion",
+  "version": "1.4.0",
+  "private": true,
+  "description": "LearnFlow & Ask Gemini Companion - Hybrid AI Chrome Extension",
+  "scripts": {
+    "build": "node scripts/build_firebase_vendor.mjs",
+    "test": "python tests/e2e_test.py"
+  },
+  "dependencies": {
+    "firebase": "^13.4.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

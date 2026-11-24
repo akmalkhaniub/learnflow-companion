@@ -410,7 +410,7 @@ def run_tests():
             expect(sp.locator('#study-status')).to_have_text('Note saved.')
             sp.locator('#study-bookmarks button', has_text='Read from here').click()
             expect(sp.locator('#study-status')).to_have_text('Reading bookmarked passage.')
-            sp.evaluate('''() => { GeminiAI.generateSectionQuiz = async () => Array.from({length: 3}, (_, i) => ({question: 'Question ' + i, choices: ['Correct choice', 'B', 'C', 'D'], correctIndex: 0, explanation: 'Supported by the section.'})); }''')
+            sp.evaluate('''() => { AIRouter.generateSectionQuiz = async () => Array.from({length: 3}, (_, i) => ({question: 'Question ' + i, choices: ['Correct choice', 'B', 'C', 'D'], correctIndex: 0, explanation: 'Supported by the section.'})); }''')
             sp.locator('#study-quiz').click()
             expect(sp.locator('#study-questions fieldset')).to_have_count(3)
             assert 'Supported by' not in sp.locator('#study-questions').inner_text()
@@ -462,6 +462,22 @@ def run_tests():
             page.wait_for_selector('#learnflow-player-root', timeout=10000)
             page.wait_for_selector('.learnflow-active-reading', timeout=10000)
             print('[PASS] 13. Final sentence completes, navigates to next chapter, and resumes reading')
+
+            # 17. AI Provider switcher (Firebase AI Logic <-> Direct Gemini)
+            sp.locator('.tab-btn[data-tab="settings"]').click()
+            sp.select_option('#setting-ai-provider', 'direct_gemini')
+            assert sp.locator('#direct-gemini-settings-panel').is_visible()
+            assert not sp.locator('#firebase-settings-panel').is_visible()
+            sp.select_option('#setting-ai-provider', 'firebase_ai_logic')
+            assert sp.locator('#firebase-settings-panel').is_visible()
+            assert not sp.locator('#direct-gemini-settings-panel').is_visible()
+            sp.fill('#setting-firebase-config', '{"apiKey":"AIzaTestKey123456","projectId":"test-proj","appId":"1:123:web:abc"}')
+            sp.fill('#setting-appcheck-token', 'debug-token-123')
+            sp.click('#btn-save-firebase-config')
+            stored_provider = sp.evaluate("async () => (await chrome.storage.local.get(['learnflow_ai_provider', 'learnflow_firebase_config']))")
+            assert stored_provider['learnflow_ai_provider'] == 'firebase_ai_logic'
+            assert stored_provider['learnflow_firebase_config']['projectId'] == 'test-proj'
+            print('[PASS] 17. AI Provider switcher persists Firebase AI Logic + App Check & Direct Gemini')
 
             assert not errors, f"Runtime errors detected: {errors}"
             print("[PASS] 8. Zero console/runtime errors across extension & page")

@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const token = ++generation; el('study-quiz').disabled = true; el('study-questions').replaceChildren();
     try {
       const data = await activeContext(); status(`Creating a quiz: ${data.sectionTitle}`);
-      const questions = await GeminiAI.generateSectionQuiz(data.sectionText);
+      const questions = await AIRouter.generateSectionQuiz(data.sectionText);
       if (token !== generation) return;
       const form = el('study-questions');
       const source = document.createElement('p'); source.textContent = `Quiz: ${data.sectionTitle}`; form.append(source);

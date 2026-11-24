@@ -303,8 +303,8 @@ class AudioPlayer {
       if (!chunk.spokenText) {
         if (this.onStatusMessage) this.onStatusMessage('Summarizing code...');
         let summary = null;
-        if (typeof GeminiAI !== 'undefined') {
-          summary = await GeminiAI.summarizeCodeBlock(chunk.text, chunk.lang);
+        if (typeof AIRouter !== 'undefined') {
+          summary = await AIRouter.summarizeCodeBlock(chunk.text, chunk.lang);
         }
         if (!isCurrent()) return; // Ignore stale AI results after seeking or stopping
         chunk.spokenText = summary || `Code snippet${chunk.lang ? ' in ' + chunk.lang : ''} shown on screen.`;
@@ -331,11 +331,11 @@ class AudioPlayer {
     else if (chunk.type === 'table') {
       if (!chunk.spokenText) {
         let tableSummary = null;
-        if (typeof GeminiAI !== 'undefined' && chunk.rawTableText) {
-          const status = await GeminiAI.isAvailable();
+        if (typeof AIRouter !== 'undefined' && chunk.rawTableText) {
+          const status = await AIRouter.isAvailable();
           if (status.available) {
             if (this.onStatusMessage) this.onStatusMessage('Summarizing table...');
-            tableSummary = await GeminiAI.summarizeTable(chunk.rawTableText);
+            tableSummary = await AIRouter.summarizeTable(chunk.rawTableText);
           }
         }
         if (!isCurrent()) return;
@@ -398,12 +398,12 @@ class AudioPlayer {
 
       if (nextChunk.type === 'code' && this.codeWhispererEnabled) {
         nextChunk._prefetching = true;
-        GeminiAI.summarizeCodeBlock(nextChunk.text, nextChunk.lang)
+        AIRouter.summarizeCodeBlock(nextChunk.text, nextChunk.lang)
           .then(s => { if (s) nextChunk.spokenText = s; })
           .catch(() => {});
       } else if (nextChunk.type === 'table' && nextChunk.rawTableText) {
         nextChunk._prefetching = true;
-        GeminiAI.summarizeTable(nextChunk.rawTableText)
+        AIRouter.summarizeTable(nextChunk.rawTableText)
           .then(s => { if (s) nextChunk.spokenText = s; })
           .catch(() => {});
       } else if (nextChunk.type === 'figure' && this.figureNarrationEnabled && nextChunk.imgEl) {
@@ -417,15 +417,15 @@ class AudioPlayer {
     if (chunk.figurePromise) return chunk.figurePromise;
     const task = (async () => {
       try {
-        const status = await GeminiAI.isAvailable();
-        if (status.mode !== 'cloud') throw new Error('Figure AI needs a Gemini API key in Settings. Caption only.');
+        const status = await AIRouter.isAvailable();
+        if (status.mode !== 'cloud' && status.mode !== 'hybrid') throw new Error('Figure AI needs Firebase AI Logic or a Gemini API key in Settings. Caption only.');
         const image = chunk.imgEl;
         if (!image) throw new Error('Figure image is unavailable. Caption only.');
         const src = image.currentSrc || image.src || image.getAttribute('data-src') || '';
         const dataUrl = src.startsWith('data:image/') ? src : await MarkdownBuilder.captureImageAsDataUrl(new URL(src, window.location.href).href, image);
         if (!dataUrl) throw new Error('Could not access this image. Caption only; try again after it loads.');
         const context = [chunk.element?.previousElementSibling?.textContent, chunk.element?.nextElementSibling?.textContent].filter(Boolean).join(' ').slice(0, 3500);
-        const description = await GeminiAI.describeFigure(dataUrl, chunk.caption, context);
+        const description = await AIRouter.describeFigure(dataUrl, chunk.caption, context);
         if (!description) throw new Error('Figure AI returned no explanation. Caption only.');
         chunk.spokenText = description;
         chunk.figureError = null;

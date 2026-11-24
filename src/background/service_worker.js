@@ -5,6 +5,9 @@
  */
 
 import { GDriveSync } from '../utils/gdrive.js';
+import '../utils/gemini_ai.js';
+import '../utils/firebase_ai_provider.js';
+import '../utils/ai_router.js';
 
 // Open the compact Smart Bar on toolbar icon click (user can open the full Side Panel from the bar or Alt+Shift+L)
 chrome.sidePanel
@@ -422,6 +425,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     sendResponse({ success: true });
     return false;
+  }
+
+  if (message.action === 'AI_ROUTER_CALL') {
+    const allowed = new Set([
+      'isAvailable',
+      'query',
+      'describeFigure',
+      'summarizeTable',
+      'generateAudioBrief',
+      'summarizeCodeBlock',
+      'generateSectionQuiz',
+      'generateAnkiCards',
+      'searchVault'
+    ]);
+    (async () => {
+      try {
+        if (!allowed.has(message.method)) throw new Error(`Unsupported AI method: ${message.method}`);
+        const result = await globalThis.AIRouter[message.method](...(message.args || []));
+        sendResponse({ result });
+      } catch (error) {
+        sendResponse({ error: error.message });
+      }
+    })();
+    return true;
   }
 
   if (message.action === 'OPEN_SIDEPANEL') {
