@@ -17,7 +17,8 @@ class ContentExtractor {
     '[aria-hidden="true"]',
     '[role="navigation"]', '[role="complementary"]', '[role="banner"]',
     '[role="search"]', '[role="dialog"]', '[role="menu"]', '[role="toolbar"]',
-    '[class*="sidebar" i]', '[class*="toc" i]', '[class*="table-of-contents" i]',
+    '[class*="sidebar" i]', '[class*="table-of-contents" i]',
+    '.toc', '[class^="toc-" i]', '[class*="-toc" i]', '[class*=" toc-" i]',
     '[class*="breadcrumb" i]',
     '[data-testid*="toc" i]', '[data-testid*="sidebar" i]', '[data-testid*="nav" i]',
     '.sr-only', '.visually-hidden'
@@ -157,10 +158,22 @@ class ContentExtractor {
     }
 
     let chunks = this._extractChunks(contentEl);
-    // Final safety fallback if Google Skills rendered inside nested shadow/custom elements
+    // Fallback 1: check main / ql-lab-page / body
     if (!chunks.length) {
-      contentEl = document.querySelector('main, [role="main"], ql-lab-page') || document.body;
+      contentEl = document.querySelector('main, [role="main"], ql-lab-page, ql-document, ql-course-document') || document.body;
       chunks = this._extractChunks(contentEl);
+    }
+    // Fallback 2: check accessible same-origin iframes (common for embedded documents!)
+    if (!chunks.length) {
+      const iframeRes = this._extractFromAccessibleIframes();
+      if (iframeRes) {
+        contentEl = iframeRes.contentEl;
+        chunks = iframeRes.chunks;
+      }
+    }
+    // Fallback 3: universal visible text walker (for div-based / custom web component layouts)
+    if (!chunks.length) {
+      chunks = this._extractVisibleTextFallback(contentEl || document.body);
     }
 
     const innerHeading = contentEl ? this._querySelectorAllDeep(contentEl, 'h1, h2')[0] : null;
@@ -234,7 +247,11 @@ class ContentExtractor {
       chapterTitle: title,
       url: window.location.href,
       contentEl: contentEl || document.body,
-      chunks: this._extractChunks(contentEl)
+      chunks: (() => {
+        let c = this._extractChunks(contentEl);
+        if (!c.length) c = this._extractVisibleTextFallback(contentEl || document.body);
+        return c;
+      })()
     };
   }
 
@@ -357,6 +374,80 @@ class ContentExtractor {
 
     walk(root);
     return results;
+  }
+
+  /**
+   * Check same-origin iframes for embedded document content (used by some course/document pages)
+   */
+  static _extractFromAccessibleIframes() {
+    const iframes = Array.from(document.querySelectorAll('iframe'));
+    for (const frame of iframes) {
+      try {
+        const doc = frame.contentDocument;
+        if (!doc || !doc.body) continue;
+        let chunks = this._extractChunks(doc.body);
+        if (!chunks.length) {
+          chunks = this._extractVisibleTextFallback(doc.body);
+        }
+        if (chunks.length > 0) {
+          return { contentEl: doc.body, chunks };
+        }
+      } catch {
+        // Cross-origin iframe; cannot access directly
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Universal fallback: walks visible text nodes (including open Shadow DOM)
+   * when a page uses <div>/<span>/custom elements instead of <p> tags.
+   */
+  static _extractVisibleTextFallback(rootEl) {
+    if (!rootEl) return [];
+    const chunks = [];
+    const seenBlocks = new Set();
+
+    const collectTextNodes = (node) => {
+      if (!node) return;
+      if (node.nodeType === Node.TEXT_NODE) {
+        const parent = node.parentElement;
+        if (!parent) return;
+        try {
+          if (parent.matches(this.EXCLUDED_ANCESTORS) || parent.closest(this.EXCLUDED_ANCESTORS)) return;
+        } catch {}
+        const style = window.getComputedStyle(parent);
+        if (style.display === 'none' || style.visibility === 'hidden') return;
+
+        const blockEl = parent.closest('div, section, article, main, p, li, td') || parent;
+        if (seenBlocks.has(blockEl)) return;
+
+        const text = this._cleanText(blockEl.innerText || blockEl.textContent || '').trim();
+        if (text.length < 25) return;
+        // Skip pure link/menu blocks
+        if (this._getLinkDensity(blockEl) > 0.6) return;
+
+        seenBlocks.add(blockEl);
+        const sentences = text.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g) || [text];
+        sentences.forEach(s => {
+          const clean = s.trim();
+          if (clean.length > 3) {
+            chunks.push({ type: 'text', text: clean, element: blockEl });
+          }
+        });
+        return;
+      }
+
+      if (node.shadowRoot) {
+        collectTextNodes(node.shadowRoot);
+      }
+      for (const child of node.childNodes) {
+        collectTextNodes(child);
+      }
+    };
+
+    collectTextNodes(rootEl);
+    return chunks;
   }
 
   /**
