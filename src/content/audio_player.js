@@ -357,9 +357,13 @@ class AudioPlayer {
     this.currentUtterance.pitch = this.pitch;
 
     this.currentUtterance.onboundary = (event) => {
-      if (!isCurrent() || chunk.type !== 'text' || !chunk.element) return;
+      if (!isCurrent() || chunk.type !== 'text') return;
       if (event.name === 'word') {
-        this._highlightWord(chunk.element, textToSpeak, event.charIndex, event.charLength);
+        if (chunk.element) {
+          this._highlightWord(chunk.element, textToSpeak, event.charIndex, event.charLength, chunk);
+        } else if (this.onRemoteWord) {
+          this.onRemoteWord(chunk, textToSpeak, event.charIndex, event.charLength);
+        }
       }
     };
 
@@ -497,10 +501,29 @@ class AudioPlayer {
     }
   }
 
+  _ensureShadowHighlightStyle(element) {
+    const root = element?.getRootNode?.();
+    if (root && typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot && !root.getElementById('learnflow-shadow-style')) {
+      const style = document.createElement('style');
+      style.id = 'learnflow-shadow-style';
+      style.textContent = `
+        .learnflow-active-reading { background-color: rgba(250, 204, 21, 0.28) !important; box-shadow: inset 3px 0 0 #d97706 !important; border-radius: 4px !important; }
+        .learnflow-block-highlight { background-color: rgba(250, 204, 21, 0.35) !important; }
+        ::highlight(learnflow-sentence) { background-color: rgba(254, 240, 138, 0.55); color: inherit; }
+        ::highlight(learnflow-word) { background-color: #f59e0b; color: #0f172a; }
+      `;
+      root.appendChild(style);
+    }
+  }
+
   _highlightChunk(chunk) {
     this._clearHighlight();
     const element = chunk?.element;
-    if (!element) return;
+    if (!element) {
+      if (chunk && this.onRemoteHighlight) this.onRemoteHighlight(chunk);
+      return;
+    }
+    this._ensureShadowHighlightStyle(element);
     this._activateContainingTab(element);
     element.classList.add('learnflow-active-reading');
     let range = null;
@@ -528,9 +551,9 @@ class AudioPlayer {
     }
   }
 
-  _highlightWord(element, sentenceText, charIndex, charLength) {
+  _highlightWord(element, sentenceText, charIndex, charLength, chunkOverride = null) {
     if (typeof CSS === 'undefined' || !CSS.highlights) return;
-    const chunk = this.chunks[this.currentIndex];
+    const chunk = chunkOverride || this.chunks[this.currentIndex];
     if (!Number.isInteger(chunk?.textStart)) return;
     // Speech uses collapsed whitespace. Map its offsets back into the original DOM text.
     const raw = (element.textContent || '').slice(chunk.textStart, chunk.textEnd);
@@ -551,13 +574,17 @@ class AudioPlayer {
   }
 
   _clearHighlight() {
-    document.querySelectorAll('.learnflow-active-reading').forEach(el => {
+    const activeEls = (typeof ContentExtractor !== 'undefined' && ContentExtractor._querySelectorAllDeep)
+      ? ContentExtractor._querySelectorAllDeep(document, '.learnflow-active-reading')
+      : document.querySelectorAll('.learnflow-active-reading');
+    activeEls.forEach(el => {
       el.classList.remove('learnflow-active-reading', 'learnflow-block-highlight');
     });
     if (typeof CSS !== 'undefined' && CSS.highlights) {
       CSS.highlights.delete('learnflow-word');
       CSS.highlights.delete('learnflow-sentence');
     }
+    if (this.onRemoteClearHighlight) this.onRemoteClearHighlight();
   }
 
   _startKeepAlive() {

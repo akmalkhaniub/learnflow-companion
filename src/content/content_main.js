@@ -5,8 +5,11 @@
  */
 (async function initLearnFlowContent() {
   // Child frames (e.g. embedded Google Skills / Qwiklabs / Docs iframes):
-  // Do NOT render UI or track history; just respond to top-frame extraction requests!
+  // Do NOT render UI or track history; just respond to top-frame extraction & highlight requests!
   if (window !== window.top) {
+    const framePlayer = new AudioPlayer();
+    let frameChunks = [];
+
     window.addEventListener('message', (event) => {
       if (event.data?.type === 'LEARNFLOW_EXTRACT_FRAME') {
         try {
@@ -15,12 +18,14 @@
           if (!chunks.length) {
             chunks = ContentExtractor._extractVisibleTextFallback(document.body);
           }
-          const serializable = chunks.map(c => ({
+          frameChunks = chunks;
+          const serializable = chunks.map((c, idx) => ({
             type: c.type || 'text',
             text: c.text,
             lang: c.lang || '',
             caption: c.caption || '',
-            headingLevel: c.headingLevel || 0
+            headingLevel: c.headingLevel || 0,
+            frameChunkIndex: idx
           }));
           const textLength = serializable.reduce((sum, c) => sum + (c.text?.length || 0), 0);
           const hasNextButton = !!AutoNavigator.findNextTarget();
@@ -34,6 +39,24 @@
         } catch {
           // Ignore restricted frame errors
         }
+      } else if (event.data?.type === 'LEARNFLOW_HIGHLIGHT_FRAME_CHUNK') {
+        try {
+          const c = frameChunks[event.data.chunkIndex];
+          if (c) {
+            framePlayer._highlightChunk(c);
+          }
+        } catch {}
+      } else if (event.data?.type === 'LEARNFLOW_HIGHLIGHT_FRAME_WORD') {
+        try {
+          const c = frameChunks[event.data.chunkIndex];
+          if (c && c.element) {
+            framePlayer._highlightWord(c.element, event.data.text, event.data.charIndex, event.data.charLength, c);
+          }
+        } catch {}
+      } else if (event.data?.type === 'LEARNFLOW_CLEAR_FRAME_HIGHLIGHT') {
+        try {
+          framePlayer._clearHighlight();
+        } catch {}
       } else if (event.data?.type === 'LEARNFLOW_CLICK_NEXT') {
         try {
           const nextEl = AutoNavigator.findNextTarget();
@@ -53,6 +76,36 @@
   console.log('[LearnFlow] Content script initializing on:', window.location.href);
 
   const audioPlayer = new AudioPlayer();
+  audioPlayer.onRemoteHighlight = (chunk) => {
+    if (mainContentFrameWindow && typeof chunk?.frameChunkIndex === 'number') {
+      try {
+        mainContentFrameWindow.postMessage({
+          type: 'LEARNFLOW_HIGHLIGHT_FRAME_CHUNK',
+          chunkIndex: chunk.frameChunkIndex
+        }, '*');
+      } catch {}
+    }
+  };
+  audioPlayer.onRemoteWord = (chunk, text, charIndex, charLength) => {
+    if (mainContentFrameWindow && typeof chunk?.frameChunkIndex === 'number') {
+      try {
+        mainContentFrameWindow.postMessage({
+          type: 'LEARNFLOW_HIGHLIGHT_FRAME_WORD',
+          chunkIndex: chunk.frameChunkIndex,
+          text,
+          charIndex,
+          charLength
+        }, '*');
+      } catch {}
+    }
+  };
+  audioPlayer.onRemoteClearHighlight = () => {
+    if (mainContentFrameWindow) {
+      try {
+        mainContentFrameWindow.postMessage({ type: 'LEARNFLOW_CLEAR_FRAME_HIGHLIGHT' }, '*');
+      } catch {}
+    }
+  };
   let extractedData = null;
   let lastExtractedUrl = null;
   let lastExtractedText = null;
