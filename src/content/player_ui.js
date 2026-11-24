@@ -62,6 +62,13 @@ class PlayerUI {
         </div>
 
         <div class="lf-pop-row">
+          <span class="lf-pop-label">Section</span>
+          <select class="lf-pop-select" id="lf-section-select" style="max-width: 165px;">
+            <option value="">Jump to section...</option>
+          </select>
+        </div>
+
+        <div class="lf-pop-row">
           <span class="lf-pop-label">Speed</span>
           <select class="lf-pop-select" id="lf-speed-select">
             <option value="0.75">0.75x</option>
@@ -227,9 +234,35 @@ class PlayerUI {
     prevBtn.addEventListener('click', () => this.audioPlayer.previous());
     nextBtn.addEventListener('click', () => this.audioPlayer.next());
 
-    // Settings Popover toggle
+    // Settings Popover toggle (populate Section Jumper dropdown on open)
+    const sectionSelect = this.root.querySelector('#lf-section-select');
+    const populateSections = () => {
+      if (!sectionSelect) return;
+      const chunks = this.audioPlayer.chunks || [];
+      const seenEls = new Set();
+      const opts = ['<option value="">Jump to section...</option>'];
+      chunks.forEach((c, idx) => {
+        if (c.headingLevel > 0 && c.element && !seenEls.has(c.element)) {
+          seenEls.add(c.element);
+          const indent = c.headingLevel > 2 ? '  ' : '';
+          const label = (c.text || '').substring(0, 42) + ((c.text || '').length > 42 ? '…' : '');
+          opts.push(`<option value="${idx}">${indent}${label.replace(/</g, '&lt;')}</option>`);
+        }
+      });
+      sectionSelect.innerHTML = opts.join('');
+    };
+
+    sectionSelect?.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.value, 10);
+      if (!isNaN(idx)) {
+        this.audioPlayer.jumpToIndex(idx);
+        popover.classList.remove('open');
+      }
+    });
+
     settingsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      populateSections();
       popover.classList.toggle('open');
       this.root.querySelector('#lf-navigation-status').textContent = AutoNavigator.status();
     });

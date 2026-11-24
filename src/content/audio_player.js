@@ -455,10 +455,53 @@ class AudioPlayer {
     return null;
   }
 
+  /**
+   * If the element lives inside an inactive tab panel (skills.google, ARIA tabs, Bootstrap/Material tabs),
+   * click the matching tab button so the UI visually switches to that tab!
+   */
+  _activateContainingTab(element) {
+    let cur = element;
+    while (cur) {
+      if (cur.nodeType === Node.ELEMENT_NODE && cur.matches?.('[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel')) {
+        const panel = cur;
+        const root = panel.getRootNode();
+        const isInactive = panel.hidden || panel.getAttribute('aria-hidden') === 'true' ||
+          (panel.classList.contains('tab-pane') && !panel.classList.contains('active')) ||
+          window.getComputedStyle(panel).display === 'none';
+
+        if (isInactive) {
+          let tabBtn = null;
+          if (panel.id) {
+            tabBtn = (root.querySelector ? root.querySelector(`[role="tab"][aria-controls="${CSS.escape(panel.id)}"]`) : null) ||
+              document.querySelector(`[role="tab"][aria-controls="${CSS.escape(panel.id)}"], a[href="#${CSS.escape(panel.id)}"], button[data-bs-target="#${CSS.escape(panel.id)}"]`);
+          }
+          if (!tabBtn && panel.getAttribute('aria-labelledby')) {
+            const labelId = panel.getAttribute('aria-labelledby');
+            tabBtn = (root.getElementById ? root.getElementById(labelId) : null) || document.getElementById(labelId);
+          }
+          if (!tabBtn && panel.parentElement) {
+            const panels = Array.from(panel.parentElement.children).filter(c => c.matches?.('[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel'));
+            const idx = panels.indexOf(panel);
+            if (idx >= 0) {
+              const scope = panel.parentElement.parentElement || (root.host ? root : document);
+              const tabs = Array.from(scope.querySelectorAll('[role="tab"], ql-tab, md-tab, .nav-link'));
+              if (tabs[idx]) tabBtn = tabs[idx];
+            }
+          }
+          if (tabBtn && tabBtn.getAttribute('aria-selected') !== 'true') {
+            tabBtn.click();
+          }
+        }
+      }
+      cur = cur.parentElement || (cur.getRootNode && cur.getRootNode().host) || null;
+    }
+  }
+
   _highlightChunk(chunk) {
     this._clearHighlight();
     const element = chunk?.element;
     if (!element) return;
+    this._activateContainingTab(element);
     element.classList.add('learnflow-active-reading');
     let range = null;
     if (chunk.type === 'text' && Number.isInteger(chunk.textStart) && typeof CSS !== 'undefined' && CSS.highlights) {

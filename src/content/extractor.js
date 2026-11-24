@@ -579,13 +579,25 @@ class ContentExtractor {
       }
 
       // 5. NORMAL PROSE / HEADING
-      // Avoid double-reading if a <li> contains <p> children (let the <p> handle it)
+      // Avoid double-reading if a <li> or <blockquote> contains <p> children
       if ((tag === 'li' || tag === 'blockquote') && el.querySelector('p')) {
         return;
       }
 
+      const isHeading = /^h[1-6]$/.test(tag);
+      if (isHeading || tag === 'p') {
+        visitedNodes.add(el);
+      }
+
       const text = this._cleanText(el.textContent).trim();
       if (!text || text.length < 3) return;
+
+      // Prevent reading duplicate headings twice (e.g. header + markdown body or slotted duplicates)
+      if (isHeading) {
+        const norm = text.toLowerCase();
+        const recentDup = chunks.slice(-3).some(c => c.text.toLowerCase() === norm);
+        if (recentDup) return;
+      }
 
       // Keep exact DOM offsets so repeated sentences and inline markup highlight correctly.
       const rawText = el.textContent || '';
@@ -597,9 +609,14 @@ class ContentExtractor {
         const trimmed = sentence.segment.trim();
         const spoken = this._cleanText(trimmed).trim();
         if (!spoken) continue;
-        chunks.push({ type: 'text', text: spoken, element: el,
+        chunks.push({
+          type: 'text',
+          text: spoken,
+          element: el,
+          headingLevel: isHeading ? parseInt(tag[1], 10) : 0,
           textStart: sentence.index + leading,
-          textEnd: sentence.index + leading + trimmed.length });
+          textEnd: sentence.index + leading + trimmed.length
+        });
       }
     });
 
