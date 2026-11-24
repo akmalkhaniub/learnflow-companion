@@ -4,6 +4,36 @@
  * YouTube SPA tracking + transcript/screenshot archiving, Ask Gemini Briefings, and Multi-Tab Queue.
  */
 (async function initLearnFlowContent() {
+  // Child frames (e.g. embedded Google Skills / Qwiklabs / Docs iframes):
+  // Do NOT render UI or track history; just respond to top-frame extraction requests!
+  if (window !== window.top) {
+    window.addEventListener('message', (event) => {
+      if (event.data?.type !== 'LEARNFLOW_EXTRACT_FRAME') return;
+      try {
+        const res = ContentExtractor.extract();
+        let chunks = res?.chunks || [];
+        if (!chunks.length) {
+          chunks = ContentExtractor._extractVisibleTextFallback(document.body);
+        }
+        const serializable = chunks.map(c => ({
+          type: c.type || 'text',
+          text: c.text,
+          lang: c.lang || '',
+          caption: c.caption || '',
+          headingLevel: c.headingLevel || 0
+        }));
+        window.top.postMessage({
+          type: 'LEARNFLOW_FRAME_CHUNKS',
+          reqId: event.data.reqId,
+          chunks: serializable
+        }, '*');
+      } catch {
+        // Ignore restricted frame errors
+      }
+    });
+    return;
+  }
+
   console.log('[LearnFlow] Content script initializing on:', window.location.href);
 
   const audioPlayer = new AudioPlayer();
@@ -78,6 +108,31 @@
 
     if (force || !extractedData || lastExtractedUrl !== getCanonicalUrl() || !extractedData.chunks?.length) {
       extractedData = ContentExtractor.extract();
+      // If top frame only found a heading/header (<= 3 chunks) and iframes exist, gather from child frames too
+      if ((extractedData.chunks?.length || 0) <= 3 && document.querySelectorAll('iframe').length > 0) {
+        const extraChunks = await new Promise((resolve) => {
+          const reqId = `lf_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+          const collected = [];
+          const onMsg = (ev) => {
+            if (ev.data?.type === 'LEARNFLOW_FRAME_CHUNKS' && ev.data.reqId === reqId && Array.isArray(ev.data.chunks)) {
+              collected.push(...ev.data.chunks.map(c => ({ ...c, element: null })));
+            }
+          };
+          window.addEventListener('message', onMsg);
+          document.querySelectorAll('iframe').forEach(frame => {
+            try {
+              frame.contentWindow?.postMessage({ type: 'LEARNFLOW_EXTRACT_FRAME', reqId }, '*');
+            } catch {}
+          });
+          setTimeout(() => {
+            window.removeEventListener('message', onMsg);
+            resolve(collected);
+          }, 450);
+        });
+        if (extraChunks.length > 0) {
+          extractedData.chunks = [...(extractedData.chunks || []), ...extraChunks];
+        }
+      }
       lastExtractedUrl = getCanonicalUrl();
       lastExtractedText = extractedData.contentEl?.textContent || null;
       if (extractedData.chunks && extractedData.chunks.length > 0) {

@@ -142,35 +142,47 @@ class ContentExtractor {
     ];
 
     let contentEl = null;
+    let validContainers = [];
     for (const sel of contentSelectors) {
       const candidates = this._querySelectorAllDeep(document, sel);
-      for (const el of candidates) {
-        if (this._isValidMainContent(el)) {
-          contentEl = el;
-          break;
-        }
+      const valid = candidates.filter(el => this._isValidMainContent(el));
+      if (valid.length > 0) {
+        // Keep only top-level containers (avoid extracting a child inside an already-matched container)
+        validContainers = valid.filter(el => !valid.some(other => other !== el && other.contains(el)));
+        contentEl = validContainers[0];
+        break;
       }
-      if (contentEl) break;
     }
 
     if (!contentEl) {
       contentEl = this._findBestMainContent();
+      if (contentEl) validContainers = [contentEl];
     }
 
-    let chunks = this._extractChunks(contentEl);
-    // Fallback 1: check main / ql-lab-page / body
-    if (!chunks.length) {
-      contentEl = document.querySelector('main, [role="main"], ql-lab-page, ql-document, ql-course-document') || document.body;
-      chunks = this._extractChunks(contentEl);
+    let chunks = [];
+    for (const container of validContainers) {
+      chunks.push(...this._extractChunks(container));
     }
-    // Fallback 2: check accessible same-origin iframes (common for embedded documents!)
-    if (!chunks.length) {
-      const iframeRes = this._extractFromAccessibleIframes();
-      if (iframeRes) {
-        contentEl = iframeRes.contentEl;
-        chunks = iframeRes.chunks;
+
+    // Fallback 1: check main / ql-lab-page / body if nothing substantial was extracted
+    if (chunks.length <= 3) {
+      const fallbackRoot = document.querySelector('main, [role="main"], ql-lab-page, ql-document, ql-course-document') || document.body;
+      const fallbackChunks = this._extractChunks(fallbackRoot);
+      if (fallbackChunks.length > chunks.length) {
+        contentEl = fallbackRoot;
+        chunks = fallbackChunks;
       }
     }
+
+    // Fallback 2: gather from ALL accessible same-origin iframes (for multi-frame pages!)
+    if (chunks.length <= 3) {
+      const iframeRes = this._extractFromAccessibleIframes();
+      if (iframeRes && iframeRes.chunks.length > 0) {
+        contentEl = contentEl || iframeRes.contentEl;
+        chunks.push(...iframeRes.chunks);
+      }
+    }
+
     // Fallback 3: universal visible text walker (for div-based / custom web component layouts)
     if (!chunks.length) {
       chunks = this._extractVisibleTextFallback(contentEl || document.body);
@@ -377,10 +389,12 @@ class ContentExtractor {
   }
 
   /**
-   * Check same-origin iframes for embedded document content (used by some course/document pages)
+   * Check ALL same-origin iframes for embedded document content (multi-frame course/document pages)
    */
   static _extractFromAccessibleIframes() {
     const iframes = Array.from(document.querySelectorAll('iframe'));
+    const allChunks = [];
+    let firstBody = null;
     for (const frame of iframes) {
       try {
         const doc = frame.contentDocument;
@@ -390,13 +404,14 @@ class ContentExtractor {
           chunks = this._extractVisibleTextFallback(doc.body);
         }
         if (chunks.length > 0) {
-          return { contentEl: doc.body, chunks };
+          if (!firstBody) firstBody = doc.body;
+          allChunks.push(...chunks);
         }
       } catch {
-        // Cross-origin iframe; cannot access directly
+        // Cross-origin iframe; handled via postMessage bridge in content_main.js
       }
     }
-    return null;
+    return allChunks.length > 0 ? { contentEl: firstBody, chunks: allChunks } : null;
   }
 
   /**
