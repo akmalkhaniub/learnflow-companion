@@ -13,12 +13,12 @@ class ContentExtractor {
   static EXCLUDED_ANCESTORS = [
     'nav', 'aside', 'footer', 'header', 'script', 'style', 'noscript',
     '#learnflow-player-root',
+    'ql-header', 'ql-drawer', 'ql-sidenav', 'mat-sidenav', 'mat-drawer',
     '[aria-hidden="true"]',
     '[role="navigation"]', '[role="complementary"]', '[role="banner"]',
     '[role="search"]', '[role="dialog"]', '[role="menu"]', '[role="toolbar"]',
     '[class*="sidebar" i]', '[class*="toc" i]', '[class*="table-of-contents" i]',
-    '[class*="drawer" i]', '[class*="nav-" i]', '[class*="-nav" i]',
-    '[class*="menu" i]', '[class*="breadcrumb" i]', '[class*="header" i]',
+    '[class*="breadcrumb" i]',
     '[data-testid*="toc" i]', '[data-testid*="sidebar" i]', '[data-testid*="nav" i]',
     '.sr-only', '.visually-hidden'
   ].join(', ');
@@ -122,31 +122,49 @@ class ContentExtractor {
 
   static _extractGoogleSkills() {
     const contentSelectors = [
+      'ql-markdown',
+      '.ql-markdown',
+      'ql-lab-instructions',
       '.lab-content__inner',
       '.lab-content',
+      '.lab-instructions',
       'div[data-testid="lab-instructions"]',
       'main.lab-step-content',
       '.step-content',
+      '.course-content',
+      '.lesson-content',
       'ql-lab-page article',
+      'ql-lab-page main',
       'article',
+      '[role="main"]',
       'main'
     ];
 
     let contentEl = null;
     for (const sel of contentSelectors) {
-      const el = document.querySelector(sel);
-      if (this._isValidMainContent(el)) {
-        contentEl = el;
-        break;
+      const candidates = this._querySelectorAllDeep(document, sel);
+      for (const el of candidates) {
+        if (this._isValidMainContent(el)) {
+          contentEl = el;
+          break;
+        }
       }
+      if (contentEl) break;
     }
 
     if (!contentEl) {
       contentEl = this._findBestMainContent();
     }
 
-    const innerHeading = contentEl?.querySelector('h1, h2');
-    const titleEl = innerHeading || document.querySelector('h1.lab-title, h1, .headline-5');
+    let chunks = this._extractChunks(contentEl);
+    // Final safety fallback if Google Skills rendered inside nested shadow/custom elements
+    if (!chunks.length) {
+      contentEl = document.querySelector('main, [role="main"], ql-lab-page') || document.body;
+      chunks = this._extractChunks(contentEl);
+    }
+
+    const innerHeading = contentEl ? this._querySelectorAllDeep(contentEl, 'h1, h2')[0] : null;
+    const titleEl = innerHeading || this._querySelectorAllDeep(document, 'h1.lab-title, h1, .headline-5')[0];
     const title = titleEl ? this._cleanText(titleEl.textContent).trim() : document.title;
 
     return {
@@ -157,7 +175,7 @@ class ContentExtractor {
       chapterTitle: title,
       url: window.location.href,
       contentEl: contentEl || document.body,
-      chunks: this._extractChunks(contentEl)
+      chunks
     };
   }
 
@@ -235,11 +253,11 @@ class ContentExtractor {
     }
 
     const rect = el.getBoundingClientRect();
-    if (rect.width < 260 || rect.height < 100) return false;
+    if (rect.width < 200 || rect.height < 60) return false;
 
-    const paragraphs = el.querySelectorAll('p');
+    const paragraphs = this._querySelectorAllDeep(el, 'p');
     const textLen = (el.innerText || el.textContent || '').trim().length;
-    if (textLen < 180) return false;
+    if (textLen < 80) return false;
 
     // Check link density: TOCs and sidebars are mostly <a> links!
     const linkDensity = this._getLinkDensity(el);
@@ -316,6 +334,32 @@ class ContentExtractor {
   }
 
   /**
+   * Query elements across both light DOM and open Shadow DOM (used by skills.google Lit/Polymer components)
+   */
+  static _querySelectorAllDeep(root, selector) {
+    const results = [];
+    if (!root) return results;
+
+    const walk = (node) => {
+      if (!node || !node.querySelectorAll) return;
+      try {
+        results.push(...node.querySelectorAll(selector));
+      } catch {
+        // ignore invalid selector
+      }
+      const all = node.querySelectorAll('*');
+      for (const el of all) {
+        if (el.shadowRoot) {
+          walk(el.shadowRoot);
+        }
+      }
+    };
+
+    walk(root);
+    return results;
+  }
+
+  /**
    * Breaks main content into an ordered reading queue containing:
    * - text sentences (with DOM element for karaoke highlighting)
    * - figures / images (with caption & imgEl for Vision narration)
@@ -328,8 +372,8 @@ class ContentExtractor {
     const chunks = [];
     const visitedNodes = new Set();
 
-    // Query in strict DOM document order
-    const elements = rootEl.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, blockquote, pre, figure, img, table');
+    // Query in strict DOM document order (piercing open Shadow DOMs for skills.google)
+    const elements = this._querySelectorAllDeep(rootEl, 'h1, h2, h3, h4, h5, h6, p, li, blockquote, pre, figure, img, table');
 
     elements.forEach(el => {
       // Skip if inside an excluded navigation/sidebar/TOC/widget container

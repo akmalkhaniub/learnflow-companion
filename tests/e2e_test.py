@@ -76,6 +76,30 @@ MOCK_CH5_HTML = """<!DOCTYPE html>
 <body><div id="sbo-rt-content"><h1>5 Agent Handoffs</h1><p>Welcome to chapter 5.</p></div></body>
 </html>"""
 
+MOCK_SKILLS_HTML = """<!DOCTYPE html>
+<html>
+<head><title>Google Cloud Skills Boost Lab</title></head>
+<body>
+  <ql-drawer-container class="has-header drawer-layout">
+    <ql-header><nav><a href="/">Catalog</a></nav></ql-header>
+    <main>
+      <ql-lab-page>
+        <ql-markdown id="skills-md"></ql-markdown>
+      </ql-lab-page>
+    </main>
+  </ql-drawer-container>
+  <script>
+    const host = document.getElementById('skills-md');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = `
+      <h1>Deploy a Cloud Run Service</h1>
+      <p>In this lab you will deploy a containerized microservice to Google Cloud Run.</p>
+      <p>First verify your active project and region in Cloud Shell.</p>
+    `;
+  </script>
+</body>
+</html>"""
+
 
 class QuietHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -84,6 +108,8 @@ class QuietHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         if "oreilly-ch5" in self.path:
             self.wfile.write(MOCK_CH5_HTML.encode("utf-8"))
+        elif "skills-lab" in self.path:
+            self.wfile.write(MOCK_SKILLS_HTML.encode("utf-8"))
         else:
             self.wfile.write(MOCK_CH4_HTML.encode("utf-8"))
 
