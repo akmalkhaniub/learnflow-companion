@@ -494,6 +494,10 @@
       // If Next button lives inside a cross-origin content iframe, tell that frame to click Next
       const iframes = ContentExtractor._querySelectorAllDeep(document, 'iframe');
       if (mainContentFrameWindow || iframes.length > 0) {
+        sessionStorage.setItem('learnflow_navigation', JSON.stringify({
+          from: AutoNavigator._canonical(window.location.href),
+          timestamp: Date.now()
+        }));
         if (mainContentFrameWindow) {
           mainContentFrameWindow.postMessage({ type: 'LEARNFLOW_CLICK_NEXT' }, '*');
         } else {

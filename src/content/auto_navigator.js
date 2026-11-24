@@ -110,7 +110,8 @@ class AutoNavigator {
       await new Promise(resolve => setTimeout(resolve, 2000));
       const pending = JSON.parse(sessionStorage.getItem('learnflow_navigation') || 'null');
       const content = (document.querySelector('#sbo-rt-content, article, main')?.textContent || '').slice(0, 12000);
-      if (pending && this._canonical(location.href) === pending.from && pending.content === content) {
+      const hasIframes = document.querySelectorAll('iframe').length > 0;
+      if (!hasIframes && pending && this._canonical(location.href) === pending.from && pending.content === content) {
         sessionStorage.removeItem('learnflow_navigation');
         return false;
       }
@@ -121,16 +122,25 @@ class AutoNavigator {
   static async checkAutoResume() {
     try {
       const pending = JSON.parse(sessionStorage.getItem('learnflow_navigation') || 'null');
-      if (!pending) return false;
-      if (Date.now() - pending.timestamp > 120000) {
-        sessionStorage.removeItem('learnflow_navigation');
-        return false;
+      if (pending) {
+        if (Date.now() - pending.timestamp > 120000) {
+          sessionStorage.removeItem('learnflow_navigation');
+        } else {
+          const current = this._canonical(window.location.href);
+          const contentChanged = pending.content !== undefined && pending.content !== (document.querySelector('#sbo-rt-content, article, main')?.textContent || '').slice(0, 12000);
+          if ((current !== pending.from || contentChanged) && (!pending.to || current === pending.to)) {
+            sessionStorage.removeItem('learnflow_navigation');
+            await chrome.storage.local.remove(['learnflow_auto_play_next', 'learnflow_auto_play_origin', 'learnflow_last_navigated']).catch(() => {});
+            return true;
+          }
+        }
       }
-      const current = this._canonical(window.location.href);
-      const contentChanged = pending.content !== undefined && pending.content !== (document.querySelector('#sbo-rt-content, article, main')?.textContent || '').slice(0, 12000);
-      if ((current === pending.from && !contentChanged) || (pending.to && current !== pending.to)) return false;
-      sessionStorage.removeItem('learnflow_navigation');
-      return true;
+      const data = await chrome.storage.local.get(['learnflow_auto_play_next', 'learnflow_last_navigated']);
+      if (data.learnflow_auto_play_next && (!data.learnflow_last_navigated || Date.now() - data.learnflow_last_navigated < 120000)) {
+        await chrome.storage.local.remove(['learnflow_auto_play_next', 'learnflow_auto_play_origin', 'learnflow_last_navigated']);
+        return true;
+      }
+      return false;
     } catch { return false; }
   }
 }
