@@ -532,39 +532,23 @@ class AudioPlayer {
   }
 
   /**
-   * If the element lives inside an inactive tab panel, collapsed accordion, <details>,
-   * or an interactive slide/stepper widget (e.g. with a "Start" / "Next" button on skills.google),
-   * activate/open/advance that widget so the visual UI matches what is being read!
+   * If the element lives inside a closed <details> or an inactive tab panel
+   * (skills.google, ARIA tabs, Bootstrap/Material tabs), open/click the matching tab button
+   * without touching page-level Start/Next navigation controls.
    */
   _activateContainingTab(element) {
-    const isHiddenEl = (el) => {
-      if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
-      if (el.hidden || el.getAttribute('aria-hidden') === 'true') return true;
-      const st = window.getComputedStyle(el);
-      return st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0';
-    };
-
     let cur = element;
     while (cur) {
       if (cur.nodeType === Node.ELEMENT_NODE) {
-        // 1. Native <details> accordion
         if (cur.tagName === 'DETAILS' && !cur.open) {
           cur.open = true;
         }
-
-        // 2. ARIA Accordion / Collapsible panel
-        if (cur.id && isHiddenEl(cur)) {
-          const root = cur.getRootNode();
-          const trigger = (root.querySelector ? root.querySelector(`[aria-controls="${CSS.escape(cur.id)}"][aria-expanded="false"]`) : null) ||
-            document.querySelector(`[aria-controls="${CSS.escape(cur.id)}"][aria-expanded="false"]`);
-          if (trigger) trigger.click();
-        }
-
-        // 3. Tab panels (ARIA, Material, Qwiklabs, Bootstrap, custom)
-        if (cur.matches?.('[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel, [class*="tab-panel" i], [class*="tab-content" i]')) {
+        if (cur.matches?.('[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel')) {
           const panel = cur;
           const root = panel.getRootNode();
-          const isInactive = isHiddenEl(panel) || (panel.classList.contains('tab-pane') && !panel.classList.contains('active'));
+          const isInactive = panel.hidden || panel.getAttribute('aria-hidden') === 'true' ||
+            (panel.classList.contains('tab-pane') && !panel.classList.contains('active')) ||
+            window.getComputedStyle(panel).display === 'none';
 
           if (isInactive) {
             let tabBtn = null;
@@ -577,33 +561,16 @@ class AudioPlayer {
               tabBtn = (root.getElementById ? root.getElementById(labelId) : null) || document.getElementById(labelId);
             }
             if (!tabBtn && panel.parentElement) {
-              const panels = Array.from(panel.parentElement.children).filter(c => c.matches?.('[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel, [class*="tab-panel" i], [class*="tab-content" i]'));
+              const panels = Array.from(panel.parentElement.children).filter(c => c.matches?.('[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel'));
               const idx = panels.indexOf(panel);
               if (idx >= 0) {
                 const scope = panel.parentElement.parentElement || (root.host ? root : document);
-                const tabs = Array.from(scope.querySelectorAll('[role="tab"], ql-tab, md-tab, .nav-link, [class*="tab-button" i], [class*="tab-header" i]'));
+                const tabs = Array.from(scope.querySelectorAll('[role="tab"], ql-tab, md-tab, .nav-link'));
                 if (tabs[idx]) tabBtn = tabs[idx];
               }
             }
             if (tabBtn && tabBtn.getAttribute('aria-selected') !== 'true') {
               tabBtn.click();
-            }
-          }
-        }
-
-        // 4. Interactive slide / stepper / carousel widgets (including Start-button cover cards)
-        if (isHiddenEl(cur) || cur.matches?.('[class*="slide" i], [class*="step" i], [class*="carousel" i], [class*="card" i]')) {
-          const container = cur.closest?.('[class*="carousel" i], [class*="slider" i], [class*="slides" i], [class*="stepper" i], [class*="slideshow" i], [class*="interactive" i], ql-carousel, ql-stepper');
-          if (container && isHiddenEl(element)) {
-            const buttons = Array.from(container.querySelectorAll('button, [role="button"], ql-button, md-filled-button, md-text-button'));
-            const startBtn = buttons.find(b => !isHiddenEl(b) && /^(start|begin|launch|open)\b/i.test((b.textContent || b.getAttribute('aria-label') || '').trim()));
-            if (startBtn) startBtn.click();
-
-            for (let step = 0; step < 15 && isHiddenEl(element); step++) {
-              const nextBtn = Array.from(container.querySelectorAll('button, [role="button"], ql-button, md-icon-button'))
-                .find(b => !isHiddenEl(b) && !b.disabled && (/^(next|continue|›|→|▶)$/i.test((b.textContent || '').trim()) || /next|forward/i.test(b.getAttribute('aria-label') || '')));
-              if (!nextBtn) break;
-              nextBtn.click();
             }
           }
         }
