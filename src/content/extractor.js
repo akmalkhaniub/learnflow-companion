@@ -479,7 +479,10 @@ class ContentExtractor {
     const visitedNodes = new Set();
 
     // Query in strict DOM document order (piercing open Shadow DOMs for skills.google)
-    const elements = this._querySelectorAllDeep(rootEl, 'h1, h2, h3, h4, h5, h6, p, li, blockquote, pre, figure, img, table');
+    const elements = this._querySelectorAllDeep(
+      rootEl,
+      'h1, h2, h3, h4, h5, h6, p, li, blockquote, pre, figure, img, table, summary, dt, dd, ql-infobox, .fr-view, [class*="callout" i]'
+    );
 
     elements.forEach(el => {
       // Skip if inside an excluded navigation/sidebar/TOC/widget container
@@ -491,9 +494,12 @@ class ContentExtractor {
         // ignore
       }
 
-      // Skip hidden elements
-      const style = window.getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden') return;
+      // Skip hidden elements unless they belong to an interactive tab/accordion/flashcard/process panel
+      const style = (el.ownerDocument?.defaultView || window).getComputedStyle(el);
+      const inInteractivePanel = !!el.closest?.(
+        '[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel, details, .blocks-tabs, .blocks-accordion, .block-flashcards, .block-process, [aria-roledescription="carousel"]'
+      );
+      if (!inInteractivePanel && (style.display === 'none' || style.visibility === 'hidden')) return;
 
       // Skip if already consumed by a parent block (table, pre, figure)
       let ancestor = el.parentElement;
@@ -593,16 +599,16 @@ class ContentExtractor {
         }
       }
 
-      // 5. NORMAL PROSE / HEADING
-      // Avoid double-reading if a <li> or <blockquote> contains <p> children
-      if ((tag === 'li' || tag === 'blockquote') && el.querySelector('p')) {
+      // 5. NORMAL PROSE / HEADING / CALLOUT / LEAF RICH-TEXT BLOCK
+      // Avoid double-reading or swallowing child blocks if a container holds nested block elements
+      const isContainerTag = tag === 'li' || tag === 'blockquote' || tag === 'dd' || tag === 'ql-infobox' ||
+        el.classList?.contains('fr-view') || /callout/i.test(el.className || '');
+      if (isContainerTag && el.querySelector('p, h1, h2, h3, h4, h5, h6, li, pre, table, blockquote, .fr-view')) {
         return;
       }
 
       const isHeading = /^h[1-6]$/.test(tag);
-      if (isHeading || tag === 'p') {
-        visitedNodes.add(el);
-      }
+      visitedNodes.add(el);
 
       const text = this._cleanText(el.textContent).trim();
       if (!text || text.length < 3) return;

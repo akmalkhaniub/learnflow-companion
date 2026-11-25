@@ -64,9 +64,15 @@
 }
 
 /* Highlight without inset stripes, padding changes, or overriding child backgrounds. */
+.learnflow-active-reading {
+  outline: 2px solid rgba(245, 158, 11, 0.65) !important;
+  outline-offset: 2px !important;
+  border-radius: 4px;
+}
+
 .learnflow-block-highlight {
   background-color: rgba(250, 204, 21, 0.22) !important;
-  outline: 2px solid rgba(245, 158, 11, 0.75) !important;
+  outline: 2px solid rgba(245, 158, 11, 0.8) !important;
   outline-offset: 2px !important;
   border-radius: 4px;
 }
@@ -80,7 +86,7 @@ figure.learnflow-active-reading {
 
 /* Native CSS Custom Highlight API for zero-DOM-mutation sentence & word-by-word karaoke */
 ::highlight(learnflow-sentence) {
-  background-color: rgba(254, 240, 138, 0.55);
+  background-color: rgba(250, 204, 21, 0.45);
   color: inherit;
 }
 

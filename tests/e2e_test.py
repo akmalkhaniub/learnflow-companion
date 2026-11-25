@@ -520,8 +520,50 @@ def run_tests():
                         }));
                         const redirectResumed = await AutoNavigator.checkAutoResume();
 
+                        // Rise-style callout (.fr-view without <p>), nested <li>, accordion, and bounded .block-process
+                        const widgetRoot = document.createElement('div');
+                        widgetRoot.innerHTML = `
+                          <div class="fr-view">Callout note without paragraph tag.</div>
+                          <ul><li>Parent item<ul><li>Nested bullet only.</li></ul></li></ul>
+                          <div class="blocks-accordion">
+                            <div class="blocks-accordion__item">
+                              <button class="blocks-accordion__header" aria-expanded="false">Open</button>
+                              <div class="acc-body" style="height:0;overflow:hidden"><p>Hidden accordion text.</p></div>
+                            </div>
+                          </div>
+                          <div class="block-process" style="height:240px;width:400px;position:relative;overflow:hidden">
+                            <button class="process-header__btn">START</button>
+                            <button class="process-arrow--right" aria-label="Next">›</button>
+                            <div class="proc-slide" style="opacity:0"><p>Process step text.</p></div>
+                          </div>
+                        `;
+                        document.body.appendChild(widgetRoot);
+                        widgetRoot.querySelector('.blocks-accordion__header').onclick = () => {
+                          widgetRoot.querySelector('.acc-body').style.height = '40px';
+                        };
+                        let startedProc = false;
+                        widgetRoot.querySelector('.process-header__btn').onclick = (e) => { startedProc = true; e.target.style.display = 'none'; };
+                        widgetRoot.querySelector('.process-arrow--right').onclick = () => {
+                          if (startedProc) widgetRoot.querySelector('.proc-slide').style.opacity = '1';
+                        };
+
+                        const wChunks = ContentExtractor._extractChunks(widgetRoot);
+                        const wTexts = wChunks.map(c => c.text);
+                        const hasFrView = wTexts.includes('Callout note without paragraph tag.');
+                        const noSwallowedParent = wTexts.filter(t => t.includes('Nested bullet only.')).length === 1;
+                        const wp = new AudioPlayer();
+                        wp.setQueue(wChunks);
+                        const accIdx = wChunks.findIndex(c => c.text === 'Hidden accordion text.');
+                        wp.seekTo(accIdx);
+                        const accOpened = widgetRoot.querySelector('.acc-body').getBoundingClientRect().height === 40;
+                        const procIdx = wChunks.findIndex(c => c.text === 'Process step text.');
+                        wp.seekTo(procIdx);
+                        const procOpened = getComputedStyle(widgetRoot.querySelector('.proc-slide')).opacity === '1';
+                        wp._clearHighlight();
+                        widgetRoot.remove();
+
                         frame.remove();
-                        return { hasIframeSentenceHighlight, codeHasActive, clearedIframeHighlight, jumpedRemote, redirectResumed };
+                        return { hasIframeSentenceHighlight, codeHasActive, clearedIframeHighlight, jumpedRemote, redirectResumed, hasFrView, noSwallowedParent, accOpened, procOpened };
                     }
                 });
                 return res.result;

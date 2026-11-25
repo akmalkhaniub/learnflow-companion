@@ -564,45 +564,109 @@ class AudioPlayer {
   }
 
   /**
-   * If the element lives inside a closed <details> or an inactive tab panel
-   * (skills.google, ARIA tabs, Bootstrap/Material tabs), open/click the matching tab button
-   * without touching page-level Start/Next navigation controls.
+   * Reveal bounded interactive lesson widgets (tabs, <details>, accordions, Rise flashcards,
+   * and bounded Rise Process carousels) without ever clicking page-level navigation buttons.
    */
   _activateContainingTab(element) {
+    const doc = element?.ownerDocument || document;
+    const win = doc.defaultView || window;
+    const isSingleHidden = (el) => {
+      if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+      if (el.hidden || el.getAttribute('aria-hidden') === 'true') return true;
+      const st = win.getComputedStyle(el);
+      if (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0) return true;
+      const r = el.getBoundingClientRect();
+      if (r.height === 0 || r.width === 0) return true;
+      if (st.maxHeight === '0px' && /(hidden|clip)/.test(st.overflow + st.overflowY)) return true;
+      return false;
+    };
+    const isPanelHidden = (el, stopAt = null) => {
+      let node = el;
+      while (node && node.nodeType === Node.ELEMENT_NODE) {
+        if (isSingleHidden(node)) return true;
+        if (node === stopAt) break;
+        node = node.parentElement || (node.getRootNode?.()?.host || null);
+      }
+      return false;
+    };
+
     let cur = element;
     while (cur) {
       if (cur.nodeType === Node.ELEMENT_NODE) {
+        // 1. Native <details>
         if (cur.tagName === 'DETAILS' && !cur.open) {
           cur.open = true;
         }
+
+        // 2. ARIA or Rise 360 Accordion item
+        if (cur.id && isPanelHidden(cur)) {
+          const root = cur.getRootNode();
+          const trigger = (root.querySelector ? root.querySelector(`[aria-controls="${CSS.escape(cur.id)}"][aria-expanded="false"]`) : null) ||
+            doc.querySelector(`[aria-controls="${CSS.escape(cur.id)}"][aria-expanded="false"]`);
+          if (trigger) trigger.click();
+        }
+        if (cur.matches?.('.blocks-accordion__item, .accordion-item') && isPanelHidden(element, cur)) {
+          const headerBtn = cur.querySelector('.blocks-accordion__header, [aria-expanded="false"]');
+          if (headerBtn) headerBtn.click();
+        }
+
+        // 3. ARIA, Material, Qwiklabs, Bootstrap, or Rise 360 Tabs
         if (cur.matches?.('[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel')) {
           const panel = cur;
           const root = panel.getRootNode();
-          const isInactive = panel.hidden || panel.getAttribute('aria-hidden') === 'true' ||
-            (panel.classList.contains('tab-pane') && !panel.classList.contains('active')) ||
-            window.getComputedStyle(panel).display === 'none';
+          const isInactive = isPanelHidden(panel) || (panel.classList.contains('tab-pane') && !panel.classList.contains('active'));
 
           if (isInactive) {
             let tabBtn = null;
             if (panel.id) {
               tabBtn = (root.querySelector ? root.querySelector(`[role="tab"][aria-controls="${CSS.escape(panel.id)}"]`) : null) ||
-                document.querySelector(`[role="tab"][aria-controls="${CSS.escape(panel.id)}"], a[href="#${CSS.escape(panel.id)}"], button[data-bs-target="#${CSS.escape(panel.id)}"]`);
+                doc.querySelector(`[role="tab"][aria-controls="${CSS.escape(panel.id)}"], a[href="#${CSS.escape(panel.id)}"], button[data-bs-target="#${CSS.escape(panel.id)}"]`);
             }
             if (!tabBtn && panel.getAttribute('aria-labelledby')) {
               const labelId = panel.getAttribute('aria-labelledby');
-              tabBtn = (root.getElementById ? root.getElementById(labelId) : null) || document.getElementById(labelId);
+              tabBtn = (root.getElementById ? root.getElementById(labelId) : null) || doc.getElementById(labelId);
             }
             if (!tabBtn && panel.parentElement) {
               const panels = Array.from(panel.parentElement.children).filter(c => c.matches?.('[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel'));
               const idx = panels.indexOf(panel);
               if (idx >= 0) {
-                const scope = panel.parentElement.parentElement || (root.host ? root : document);
-                const tabs = Array.from(scope.querySelectorAll('[role="tab"], ql-tab, md-tab, .nav-link'));
+                const scope = panel.parentElement.parentElement || (root.host ? root : doc);
+                const tabs = Array.from(scope.querySelectorAll('[role="tab"], ql-tab, md-tab, .nav-link, .blocks-tabs__header-item'));
                 if (tabs[idx]) tabBtn = tabs[idx];
               }
             }
             if (tabBtn && tabBtn.getAttribute('aria-selected') !== 'true') {
               tabBtn.click();
+            }
+          }
+        }
+
+        // 4. Bounded Rise Flashcard (flip back-face into view)
+        if (cur.matches?.('.flashcard, .flip-card, [class*="flashcard-item" i]') && cur.getBoundingClientRect().height < 650) {
+          const inBack = !!element.closest?.('[class*="back" i]');
+          const isFlipped = cur.classList.contains('is-flipped') || cur.classList.contains('flipped') || cur.classList.contains('flashcard--flipped');
+          if (inBack && !isFlipped) {
+            const flipBtn = cur.querySelector('button, [role="button"]') || cur;
+            flipBtn.click();
+          }
+        }
+
+        // 5. Strictly bounded Rise Process / ARIA Carousel widget (< 850px tall, never a page wrapper)
+        if (cur.matches?.('.block-process, [aria-roledescription="carousel"]')) {
+          const cRect = cur.getBoundingClientRect();
+          if (cRect.height > 0 && cRect.height < 850) {
+            const eRect = element.getBoundingClientRect();
+            const offscreenInCarousel = isPanelHidden(element, cur) || eRect.left >= cRect.right - 8 || eRect.right <= cRect.left + 8;
+            if (offscreenInCarousel) {
+              const startBtn = cur.querySelector('.process-header__btn, button[class*="start" i]');
+              if (startBtn && !isSingleHidden(startBtn)) startBtn.click();
+              for (let s = 0; s < 12; s++) {
+                const nowRect = element.getBoundingClientRect();
+                if (!isPanelHidden(element, cur) && nowRect.left >= cRect.left - 8 && nowRect.right <= cRect.right + 8) break;
+                const nextSlideBtn = cur.querySelector('button[aria-label*="next" i], .carousel-control-next, .process-arrow--right');
+                if (!nextSlideBtn || isSingleHidden(nextSlideBtn) || nextSlideBtn.disabled) break;
+                nextSlideBtn.click();
+              }
             }
           }
         }
@@ -613,9 +677,10 @@ class AudioPlayer {
 
   _ensureShadowHighlightStyle(element) {
     const cssText = `
-      .learnflow-block-highlight { background-color: rgba(250, 204, 21, 0.25) !important; outline: 2px solid rgba(245, 158, 11, 0.75) !important; outline-offset: 2px !important; border-radius: 4px !important; }
+      .learnflow-active-reading { outline: 2px solid rgba(245, 158, 11, 0.65) !important; outline-offset: 2px !important; border-radius: 4px !important; }
+      .learnflow-block-highlight { background-color: rgba(250, 204, 21, 0.25) !important; outline: 2px solid rgba(245, 158, 11, 0.8) !important; outline-offset: 2px !important; border-radius: 4px !important; }
       pre.learnflow-active-reading, table.learnflow-active-reading, figure.learnflow-active-reading { outline: 2px solid #f59e0b !important; outline-offset: 3px !important; }
-      ::highlight(learnflow-sentence) { background-color: rgba(254, 240, 138, 0.55); color: inherit; }
+      ::highlight(learnflow-sentence) { background-color: rgba(250, 204, 21, 0.45); color: inherit; }
       ::highlight(learnflow-word) { background-color: #f59e0b; color: #0f172a; }
     `;
     const root = element?.getRootNode?.();
