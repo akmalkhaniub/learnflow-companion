@@ -179,7 +179,8 @@
   const ensureFreshExtraction = async (force = false) => {
     if (YouTubeHandler.isYouTubeHost()) return null;
 
-    if (force || !extractedData || lastExtractedUrl !== getCanonicalUrl() || !extractedData.chunks?.length) {
+    const needsFrameRetry = !mainContentFrameWindow && ((extractedData?.chunks?.length || 0) < 8);
+    if (force || !extractedData || lastExtractedUrl !== getCanonicalUrl() || !extractedData.chunks?.length || needsFrameRetry) {
       mainContentFrameWindow = null;
       extractedData = ContentExtractor.extract();
 
@@ -739,6 +740,8 @@
         lastExtractedUrl = null;
         audioPlayer.stop();
         resumeNextPage(previousText).catch(error => playerUI.showToast(error.message));
+      } else if (playerUI.isVisible() && !audioPlayer.isPlaying && !mainContentFrameWindow) {
+        setTimeout(() => ensureFreshExtraction(true).catch(() => {}), 400);
       }
     }
   });
