@@ -10,6 +10,8 @@
     const framePlayer = new AudioPlayer();
     let frameChunks = [];
 
+    try { window.top.postMessage({ type: 'LEARNFLOW_FRAME_READY' }, '*'); } catch {}
+
     window.addEventListener('message', (event) => {
       if (event.data?.type === 'LEARNFLOW_EXTRACT_FRAME') {
         try {
@@ -726,6 +728,20 @@
 
   // Log initial visit (wait 1.2s so YouTube/SPA real title has mounted)
   setTimeout(reportCurrentVisit, 1200);
+
+  // Listen for child iframe ready events (handles iframe-only navigation on skills.google)
+  window.addEventListener('message', async (ev) => {
+    if (ev.data?.type === 'LEARNFLOW_FRAME_READY') {
+      const shouldResume = await AutoNavigator.checkAutoResume();
+      if (shouldResume && !YouTubeHandler.isYouTubeHost()) {
+        const previousText = lastExtractedText;
+        extractedData = null;
+        lastExtractedUrl = null;
+        audioPlayer.stop();
+        resumeNextPage(previousText).catch(error => playerUI.showToast(error.message));
+      }
+    }
+  });
 
   // Check if we arrived here through full-page Auto-Advance, or if user left the Smart Bar open on this tab
   const shouldAutoResume = await AutoNavigator.checkAutoResume();

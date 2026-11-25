@@ -427,6 +427,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message.action === 'TTS_SPEAK') {
+    const tabId = sender.tab?.id;
+    const uttId = message.uttId;
+    try {
+      chrome.tts.stop();
+      chrome.tts.speak(message.text || '', {
+        rate: Number(message.rate) || 1.0,
+        pitch: Number(message.pitch) || 1.0,
+        voiceName: message.voiceName || undefined,
+        onEvent: (event) => {
+          if (!tabId) return;
+          if (event.type === 'word' || event.type === 'end' || event.type === 'error' || event.type === 'interrupted' || event.type === 'cancelled') {
+            chrome.tabs.sendMessage(tabId, {
+              action: 'TTS_EVENT',
+              uttId,
+              type: event.type,
+              charIndex: event.charIndex || 0,
+              length: event.length || 0,
+              errorMessage: event.errorMessage || ''
+            }).catch(() => {});
+          }
+        }
+      });
+      sendResponse({ started: true });
+    } catch (error) {
+      sendResponse({ started: false, error: error.message });
+    }
+    return false;
+  }
+
+  if (message.action === 'TTS_STOP') {
+    try { chrome.tts.stop(); } catch {}
+    sendResponse({ stopped: true });
+    return false;
+  }
+
   if (message.action === 'AI_ROUTER_CALL') {
     const allowed = new Set([
       'isAvailable',

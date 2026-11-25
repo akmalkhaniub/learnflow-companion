@@ -17,6 +17,9 @@ class AudioPlayer {
     this.currentUtterance = null;
     this.completed = false;
     this.keepAliveTimer = null;
+    this._useChromeTts = false;
+    this._activeUttId = null;
+    this._ttsHandler = null;
 
     // Smart Narration Modes
     this.codeWhispererEnabled = true;
@@ -32,6 +35,25 @@ class AudioPlayer {
     this.onStatusMessage = null;
 
     this._initVoices();
+    this._initChromeTtsListener();
+  }
+
+  _initChromeTtsListener() {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage || typeof window === 'undefined' || window !== window.top) return;
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg?.action === 'TTS_EVENT' && msg.uttId && msg.uttId === this._activeUttId && this._ttsHandler) {
+        this._ttsHandler(msg);
+      }
+    });
+  }
+
+  _cancelSpeech() {
+    try { this.synth.cancel(); } catch {}
+    if (this._activeUttId) {
+      this._activeUttId = null;
+      this._ttsHandler = null;
+      try { chrome.runtime?.sendMessage?.({ action: 'TTS_STOP' }).catch?.(() => {}); } catch {}
+    }
   }
 
   _initVoices() {
@@ -175,7 +197,7 @@ class AudioPlayer {
   pause() {
     if (this.isPlaying && !this.isPaused) {
       this.playbackGeneration++;
-      this.synth.cancel();
+      this._cancelSpeech();
       this.isPaused = true;
       this.isPlaying = false;
       this._stopKeepAlive();
@@ -185,7 +207,7 @@ class AudioPlayer {
 
   stop() {
     this.playbackGeneration++;
-    this.synth.cancel();
+    this._cancelSpeech();
     this._stopKeepAlive();
     this._clearHighlight();
     this.isPlaying = false;
@@ -198,7 +220,7 @@ class AudioPlayer {
   next() {
     if (this.currentIndex < this.chunks.length - 1) {
       this.playbackGeneration++;
-      this.synth.cancel();
+      this._cancelSpeech();
       this.currentIndex++;
       if (this.isPlaying) {
         this._speakChunk(this.currentIndex);
@@ -376,14 +398,64 @@ class AudioPlayer {
     this.currentUtterance.onerror = (e) => {
       if (!isCurrent()) return;
       if (e.error === 'interrupted' || e.error === 'canceled') return;
+      if (e.error === 'not-allowed' && typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        console.log('[LearnFlow TTS] Autoplay blocked on speechSynthesis; switching to chrome.tts');
+        this._useChromeTts = true;
+        this._speakViaChromeTts(textToSpeak, chunk, isCurrent);
+        return;
+      }
       console.warn('[LearnFlow TTS] paused at current sentence:', e.error);
       this.pause();
       if (this.onStatusMessage) this.onStatusMessage('Speech paused. Press Play to retry this sentence, or choose another voice.');
     };
 
+    if (this._useChromeTts && typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      this._speakViaChromeTts(textToSpeak, chunk, isCurrent);
+      return;
+    }
+
     // Keep a strong reference (Chrome GC can drop utterances and silently stop playback)
     window.__lfUtterance = this.currentUtterance;
     this.synth.speak(this.currentUtterance);
+  }
+
+  _speakViaChromeTts(textToSpeak, chunk, isCurrent) {
+    const uttId = `lf_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    this._activeUttId = uttId;
+    this._ttsHandler = (ev) => {
+      if (!isCurrent() || ev.uttId !== uttId) return;
+      if (ev.type === 'word' && chunk.type === 'text') {
+        if (chunk.element) {
+          this._highlightWord(chunk.element, textToSpeak, ev.charIndex, ev.length || 0, chunk);
+        } else if (this.onRemoteWord) {
+          this.onRemoteWord(chunk, textToSpeak, ev.charIndex, ev.length || 0);
+        }
+      } else if (ev.type === 'end') {
+        this._activeUttId = null;
+        this._ttsHandler = null;
+        this.currentIndex++;
+        this._speakChunk(this.currentIndex);
+      } else if (ev.type === 'error') {
+        this._activeUttId = null;
+        this._ttsHandler = null;
+        this.pause();
+        if (this.onStatusMessage) this.onStatusMessage('Speech paused. Press Play to retry this sentence.');
+      }
+    };
+    chrome.runtime.sendMessage({
+      action: 'TTS_SPEAK',
+      uttId,
+      text: textToSpeak,
+      rate: this.rate,
+      pitch: this.pitch,
+      voiceName: this.selectedVoice?.name || ''
+    }, (res) => {
+      if (chrome.runtime.lastError || !res?.started) {
+        if (!isCurrent()) return;
+        this.pause();
+        if (this.onStatusMessage) this.onStatusMessage('Speech paused. Press Play to start reading.');
+      }
+    });
   }
 
   /**
@@ -460,40 +532,79 @@ class AudioPlayer {
   }
 
   /**
-   * If the element lives inside an inactive tab panel (skills.google, ARIA tabs, Bootstrap/Material tabs),
-   * click the matching tab button so the UI visually switches to that tab!
+   * If the element lives inside an inactive tab panel, collapsed accordion, <details>,
+   * or an interactive slide/stepper widget (e.g. with a "Start" / "Next" button on skills.google),
+   * activate/open/advance that widget so the visual UI matches what is being read!
    */
   _activateContainingTab(element) {
+    const isHiddenEl = (el) => {
+      if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+      if (el.hidden || el.getAttribute('aria-hidden') === 'true') return true;
+      const st = window.getComputedStyle(el);
+      return st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0';
+    };
+
     let cur = element;
     while (cur) {
-      if (cur.nodeType === Node.ELEMENT_NODE && cur.matches?.('[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel')) {
-        const panel = cur;
-        const root = panel.getRootNode();
-        const isInactive = panel.hidden || panel.getAttribute('aria-hidden') === 'true' ||
-          (panel.classList.contains('tab-pane') && !panel.classList.contains('active')) ||
-          window.getComputedStyle(panel).display === 'none';
+      if (cur.nodeType === Node.ELEMENT_NODE) {
+        // 1. Native <details> accordion
+        if (cur.tagName === 'DETAILS' && !cur.open) {
+          cur.open = true;
+        }
 
-        if (isInactive) {
-          let tabBtn = null;
-          if (panel.id) {
-            tabBtn = (root.querySelector ? root.querySelector(`[role="tab"][aria-controls="${CSS.escape(panel.id)}"]`) : null) ||
-              document.querySelector(`[role="tab"][aria-controls="${CSS.escape(panel.id)}"], a[href="#${CSS.escape(panel.id)}"], button[data-bs-target="#${CSS.escape(panel.id)}"]`);
-          }
-          if (!tabBtn && panel.getAttribute('aria-labelledby')) {
-            const labelId = panel.getAttribute('aria-labelledby');
-            tabBtn = (root.getElementById ? root.getElementById(labelId) : null) || document.getElementById(labelId);
-          }
-          if (!tabBtn && panel.parentElement) {
-            const panels = Array.from(panel.parentElement.children).filter(c => c.matches?.('[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel'));
-            const idx = panels.indexOf(panel);
-            if (idx >= 0) {
-              const scope = panel.parentElement.parentElement || (root.host ? root : document);
-              const tabs = Array.from(scope.querySelectorAll('[role="tab"], ql-tab, md-tab, .nav-link'));
-              if (tabs[idx]) tabBtn = tabs[idx];
+        // 2. ARIA Accordion / Collapsible panel
+        if (cur.id && isHiddenEl(cur)) {
+          const root = cur.getRootNode();
+          const trigger = (root.querySelector ? root.querySelector(`[aria-controls="${CSS.escape(cur.id)}"][aria-expanded="false"]`) : null) ||
+            document.querySelector(`[aria-controls="${CSS.escape(cur.id)}"][aria-expanded="false"]`);
+          if (trigger) trigger.click();
+        }
+
+        // 3. Tab panels (ARIA, Material, Qwiklabs, Bootstrap, custom)
+        if (cur.matches?.('[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel, [class*="tab-panel" i], [class*="tab-content" i]')) {
+          const panel = cur;
+          const root = panel.getRootNode();
+          const isInactive = isHiddenEl(panel) || (panel.classList.contains('tab-pane') && !panel.classList.contains('active'));
+
+          if (isInactive) {
+            let tabBtn = null;
+            if (panel.id) {
+              tabBtn = (root.querySelector ? root.querySelector(`[role="tab"][aria-controls="${CSS.escape(panel.id)}"]`) : null) ||
+                document.querySelector(`[role="tab"][aria-controls="${CSS.escape(panel.id)}"], a[href="#${CSS.escape(panel.id)}"], button[data-bs-target="#${CSS.escape(panel.id)}"]`);
+            }
+            if (!tabBtn && panel.getAttribute('aria-labelledby')) {
+              const labelId = panel.getAttribute('aria-labelledby');
+              tabBtn = (root.getElementById ? root.getElementById(labelId) : null) || document.getElementById(labelId);
+            }
+            if (!tabBtn && panel.parentElement) {
+              const panels = Array.from(panel.parentElement.children).filter(c => c.matches?.('[role="tabpanel"], .tab-pane, ql-tab-panel, md-tab-panel, sl-tab-panel, [class*="tab-panel" i], [class*="tab-content" i]'));
+              const idx = panels.indexOf(panel);
+              if (idx >= 0) {
+                const scope = panel.parentElement.parentElement || (root.host ? root : document);
+                const tabs = Array.from(scope.querySelectorAll('[role="tab"], ql-tab, md-tab, .nav-link, [class*="tab-button" i], [class*="tab-header" i]'));
+                if (tabs[idx]) tabBtn = tabs[idx];
+              }
+            }
+            if (tabBtn && tabBtn.getAttribute('aria-selected') !== 'true') {
+              tabBtn.click();
             }
           }
-          if (tabBtn && tabBtn.getAttribute('aria-selected') !== 'true') {
-            tabBtn.click();
+        }
+
+        // 4. Interactive slide / stepper / carousel widgets (including Start-button cover cards)
+        if (isHiddenEl(cur) || cur.matches?.('[class*="slide" i], [class*="step" i], [class*="carousel" i], [class*="card" i]')) {
+          const container = cur.closest?.('[class*="carousel" i], [class*="slider" i], [class*="slides" i], [class*="stepper" i], [class*="slideshow" i], [class*="interactive" i], ql-carousel, ql-stepper');
+          if (container && isHiddenEl(element)) {
+            const buttons = Array.from(container.querySelectorAll('button, [role="button"], ql-button, md-filled-button, md-text-button'));
+            const startBtn = buttons.find(b => !isHiddenEl(b) && /^(start|begin|launch|open)\b/i.test((b.textContent || b.getAttribute('aria-label') || '').trim()));
+            if (startBtn) startBtn.click();
+
+            for (let step = 0; step < 15 && isHiddenEl(element); step++) {
+              const nextBtn = Array.from(container.querySelectorAll('button, [role="button"], ql-button, md-icon-button'))
+                .find(b => !isHiddenEl(b) && !b.disabled && (/^(next|continue|›|→|▶)$/i.test((b.textContent || '').trim()) || /next|forward/i.test(b.getAttribute('aria-label') || '')));
+              if (!nextBtn) break;
+              nextBtn.click();
+            }
           }
         }
       }
