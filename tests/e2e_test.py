@@ -480,44 +480,51 @@ def run_tests():
             print('[PASS] 17. AI Provider switcher persists Firebase AI Logic + App Check & Direct Gemini')
 
             # 18. Same-origin iframe CSS.highlights, code stepping, remote jumpSection, and redirect auto-resume
-            iframe_check = page.evaluate("""async () => {
-                const frame = document.createElement('iframe');
-                document.body.appendChild(frame);
-                frame.contentDocument.open();
-                frame.contentDocument.write('<!doctype html><html><body><h2>Frame Section 1</h2><p>First iframe sentence. Second iframe sentence.</p><pre><code>const x = 42;</code></pre><h2>Frame Section 2</h2><p>Final iframe sentence.</p></body></html>');
-                frame.contentDocument.close();
+            iframe_check = sp.evaluate("""async () => {
+                const tabs = await chrome.tabs.query({ url: 'http://127.0.0.1:*/*' });
+                const [res] = await chrome.scripting.executeScript({
+                    target: { tabId: tabs[0].id },
+                    func: async () => {
+                        const frame = document.createElement('iframe');
+                        document.body.appendChild(frame);
+                        frame.contentDocument.open();
+                        frame.contentDocument.write('<!doctype html><html><body><h2>Frame Section 1</h2><p>First iframe sentence. Second iframe sentence.</p><pre><code>const x = 42;</code></pre><h2>Frame Section 2</h2><p>Final iframe sentence.</p></body></html>');
+                        frame.contentDocument.close();
 
-                const chunks = ContentExtractor._extractChunks(frame.contentDocument.body);
-                const p = new AudioPlayer();
-                p.setQueue(chunks);
-                p._highlightChunk(chunks[1]);
-                const hasIframeSentenceHighlight = frame.contentWindow.CSS.highlights.has('learnflow-sentence');
-                p.next(); // -> Second iframe sentence
-                p.next(); // -> <pre> code block
-                const codeEl = chunks[3].element;
-                const codeHasActive = codeEl.classList.contains('learnflow-active-reading') && codeEl.classList.contains('learnflow-block-highlight');
-                p._clearHighlight();
-                const clearedIframeHighlight = !frame.contentWindow.CSS.highlights.has('learnflow-sentence') && !codeEl.classList.contains('learnflow-active-reading');
+                        const chunks = ContentExtractor._extractChunks(frame.contentDocument.body);
+                        const p = new AudioPlayer();
+                        p.setQueue(chunks);
+                        p.seekTo(1);
+                        const hasIframeSentenceHighlight = frame.contentWindow.CSS.highlights.has('learnflow-sentence');
+                        p.next(); // -> Second iframe sentence
+                        p.next(); // -> <pre> code block
+                        const codeEl = chunks[3].element;
+                        const codeHasActive = codeEl.classList.contains('learnflow-active-reading') && codeEl.classList.contains('learnflow-block-highlight');
+                        p._clearHighlight();
+                        const clearedIframeHighlight = !frame.contentWindow.CSS.highlights.has('learnflow-sentence') && !codeEl.classList.contains('learnflow-active-reading');
 
-                // Remote heading jumpSection (when element is null, e.g. cross-origin iframe)
-                const pRemote = new AudioPlayer();
-                pRemote.synth = { cancel() {}, speak() {} };
-                pRemote.setQueue([
-                  { type: 'text', text: 'Intro', headingLevel: 1, element: null },
-                  { type: 'text', text: 'Body', headingLevel: 0, element: null },
-                  { type: 'text', text: 'Next Heading', headingLevel: 2, element: null }
-                ]);
-                const jumpedRemote = pRemote.jumpSection(1) && pRemote.currentIndex === 2;
+                        // Remote heading jumpSection (when element is null, e.g. cross-origin iframe)
+                        const pRemote = new AudioPlayer();
+                        pRemote.synth = { cancel() {}, speak() {} };
+                        pRemote.setQueue([
+                          { type: 'text', text: 'Intro', headingLevel: 1, element: null },
+                          { type: 'text', text: 'Body', headingLevel: 0, element: null },
+                          { type: 'text', text: 'Next Heading', headingLevel: 2, element: null }
+                        ]);
+                        const jumpedRemote = pRemote.jumpSection(1) && pRemote.currentIndex === 2;
 
-                // Redirected Next-page auto-resume (skills.google /activities/... -> /documents/...)
-                sessionStorage.setItem('learnflow_navigation', JSON.stringify({
-                  from: 'https://www.skills.google/paths/1/activities/100',
-                  timestamp: Date.now()
-                }));
-                const redirectResumed = await AutoNavigator.checkAutoResume();
+                        // Redirected Next-page auto-resume (skills.google /activities/... -> /documents/...)
+                        sessionStorage.setItem('learnflow_navigation', JSON.stringify({
+                          from: 'https://www.skills.google/paths/1/activities/100',
+                          timestamp: Date.now()
+                        }));
+                        const redirectResumed = await AutoNavigator.checkAutoResume();
 
-                frame.remove();
-                return { hasIframeSentenceHighlight, codeHasActive, clearedIframeHighlight, jumpedRemote, redirectResumed };
+                        frame.remove();
+                        return { hasIframeSentenceHighlight, codeHasActive, clearedIframeHighlight, jumpedRemote, redirectResumed };
+                    }
+                });
+                return res.result;
             }""")
             assert all(iframe_check.values()), iframe_check
             print('[PASS] 18. Same-origin iframe highlights, code block stepping, remote jumpSection & redirect auto-resume')
