@@ -20,6 +20,8 @@ class AudioPlayer {
     this._useChromeTts = false;
     this._activeUttId = null;
     this._ttsHandler = null;
+    this._highlightedElements = new Set();
+    this._highlightedWindows = new Set();
 
     // Smart Narration Modes
     this.codeWhispererEnabled = true;
@@ -153,7 +155,7 @@ class AudioPlayer {
   }
 
   jumpSection(direction) {
-    const headings = this.chunks.map((chunk, index) => /^H[1-6]$/.test(chunk.element?.tagName || '') ? index : -1).filter(index => index >= 0);
+    const headings = this.chunks.map((chunk, index) => (chunk.headingLevel > 0 || /^H[1-6]$/.test(chunk.element?.tagName || '')) ? index : -1).filter(index => index >= 0);
     const index = direction > 0 ? headings.find(index => index > this.currentIndex) : headings.reverse().find(index => index < this.currentIndex);
     return index === undefined ? false : this.jumpToIndex(index);
   }
@@ -460,6 +462,14 @@ class AudioPlayer {
       } else if (ev.type === 'error') {
         this._activeUttId = null;
         this._ttsHandler = null;
+        this._useChromeTts = false;
+        // Fallback to native speechSynthesis if chrome.tts errored
+        if (this.currentUtterance && this.synth) {
+          try {
+            this.synth.speak(this.currentUtterance);
+            return;
+          } catch {}
+        }
         this.pause();
         if (this.onStatusMessage) this.onStatusMessage('Speech paused. Press Play to retry this sentence.');
       }
@@ -469,8 +479,7 @@ class AudioPlayer {
       uttId,
       text: textToSpeak,
       rate: this.rate,
-      pitch: this.pitch,
-      voiceName: this.selectedVoice?.name || ''
+      pitch: this.pitch
     }, (res) => {
       if (chrome.runtime.lastError || !res?.started) {
         if (!isCurrent()) return;
@@ -535,8 +544,9 @@ class AudioPlayer {
   }
 
   _rangeForOffsets(element, start, end) {
-    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    const range = document.createRange();
+    const doc = element?.ownerDocument || document;
+    const walker = doc.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const range = doc.createRange();
     let offset = 0, node, started = false;
     while ((node = walker.nextNode())) {
       const length = node.nodeValue.length;
@@ -602,17 +612,25 @@ class AudioPlayer {
   }
 
   _ensureShadowHighlightStyle(element) {
+    const cssText = `
+      .learnflow-block-highlight { background-color: rgba(250, 204, 21, 0.25) !important; outline: 2px solid rgba(245, 158, 11, 0.75) !important; outline-offset: 2px !important; border-radius: 4px !important; }
+      pre.learnflow-active-reading, table.learnflow-active-reading, figure.learnflow-active-reading { outline: 2px solid #f59e0b !important; outline-offset: 3px !important; }
+      ::highlight(learnflow-sentence) { background-color: rgba(254, 240, 138, 0.55); color: inherit; }
+      ::highlight(learnflow-word) { background-color: #f59e0b; color: #0f172a; }
+    `;
     const root = element?.getRootNode?.();
     if (root && typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot && !root.getElementById('learnflow-shadow-style')) {
-      const style = document.createElement('style');
+      const style = (element.ownerDocument || document).createElement('style');
       style.id = 'learnflow-shadow-style';
-      style.textContent = `
-        .learnflow-active-reading { background-color: rgba(250, 204, 21, 0.28) !important; box-shadow: inset 3px 0 0 #d97706 !important; border-radius: 4px !important; }
-        .learnflow-block-highlight { background-color: rgba(250, 204, 21, 0.35) !important; }
-        ::highlight(learnflow-sentence) { background-color: rgba(254, 240, 138, 0.55); color: inherit; }
-        ::highlight(learnflow-word) { background-color: #f59e0b; color: #0f172a; }
-      `;
+      style.textContent = cssText;
       root.appendChild(style);
+    }
+    const doc = element?.ownerDocument;
+    if (doc && doc !== document && !doc.getElementById('learnflow-doc-style')) {
+      const style = doc.createElement('style');
+      style.id = 'learnflow-doc-style';
+      style.textContent = cssText;
+      (doc.head || doc.documentElement)?.appendChild(style);
     }
   }
 
@@ -623,37 +641,55 @@ class AudioPlayer {
       if (chunk && this.onRemoteHighlight) this.onRemoteHighlight(chunk);
       return;
     }
+    const doc = element.ownerDocument || document;
+    const win = doc.defaultView || window;
     this._ensureShadowHighlightStyle(element);
     this._activateContainingTab(element);
     element.classList.add('learnflow-active-reading');
+    this._highlightedElements.add(element);
+    this._highlightedWindows.add(win);
+
     let range = null;
-    if (chunk.type === 'text' && Number.isInteger(chunk.textStart) && typeof CSS !== 'undefined' && CSS.highlights) {
+    if (chunk.type === 'text' && Number.isInteger(chunk.textStart) && win.CSS?.highlights && typeof win.Highlight === 'function') {
       range = this._rangeForOffsets(element, chunk.textStart, chunk.textEnd);
-      if (range) CSS.highlights.set('learnflow-sentence', new Highlight(range));
+      if (range) win.CSS.highlights.set('learnflow-sentence', new win.Highlight(range));
     }
-    // Shadow DOM elements need block tint because document-level ::highlight() does not always paint inside ShadowRoots.
+    // Shadow DOM elements and non-text blocks (code, figure, table) get block tint + outline.
     const inShadow = typeof ShadowRoot !== 'undefined' && element.getRootNode?.() instanceof ShadowRoot;
     if (!range || inShadow) element.classList.add('learnflow-block-highlight');
     if (Date.now() < (this.suppressAutoScrollUntil || 0)) return;
+
     const rect = range?.getBoundingClientRect() || element.getBoundingClientRect();
-    let scroller = element.parentElement;
-    while (scroller && scroller !== document.body) {
-      const style = window.getComputedStyle(scroller);
+    let scroller = element.parentElement || (element.getRootNode?.()?.host || null);
+    while (scroller && scroller !== doc.body && scroller !== doc.documentElement) {
+      const style = win.getComputedStyle(scroller);
       if (/(auto|scroll)/.test(style.overflowY) && scroller.scrollHeight > scroller.clientHeight) break;
-      scroller = scroller.parentElement;
+      scroller = scroller.parentElement || (scroller.getRootNode?.()?.host || null);
     }
-    const nested = scroller && scroller !== document.body;
-    const bounds = nested ? scroller.getBoundingClientRect() : {top: 0, bottom: window.innerHeight};
+    const nested = scroller && scroller !== doc.body && scroller !== doc.documentElement ? scroller : null;
+    const bounds = nested ? nested.getBoundingClientRect() : { top: 0, bottom: win.innerHeight };
     const top = Math.max(0, bounds.top) + 40;
-    const bottom = Math.min(window.innerHeight, bounds.bottom) - 40;
+    const bottom = Math.min(win.innerHeight, bounds.bottom) - 40;
     if (rect.top < top || rect.bottom > bottom) {
       const delta = rect.top < top ? rect.top - top : rect.bottom - bottom;
-      (nested ? scroller : window).scrollBy({top: delta, left: 0, behavior: 'instant'});
+      (nested || win).scrollBy({ top: delta, left: 0, behavior: 'instant' });
+    }
+    // If element lives inside a same-origin iframe whose outer page itself scrolls, bring it into outer viewport too.
+    if (win !== window && win.frameElement) {
+      const frameRect = win.frameElement.getBoundingClientRect();
+      const absTop = frameRect.top + rect.top;
+      const absBottom = frameRect.top + rect.bottom;
+      if (absTop < 60 || absBottom > window.innerHeight - 60) {
+        const outerDelta = absTop < 60 ? absTop - 80 : absBottom - (window.innerHeight - 80);
+        window.scrollBy({ top: outerDelta, left: 0, behavior: 'instant' });
+      }
     }
   }
 
   _highlightWord(element, sentenceText, charIndex, charLength, chunkOverride = null) {
-    if (typeof CSS === 'undefined' || !CSS.highlights) return;
+    const doc = element?.ownerDocument || document;
+    const win = doc.defaultView || window;
+    if (!win.CSS?.highlights || typeof win.Highlight !== 'function') return;
     const chunk = chunkOverride || this.chunks[this.currentIndex];
     if (!Number.isInteger(chunk?.textStart)) return;
     // Speech uses collapsed whitespace. Map its offsets back into the original DOM text.
@@ -671,16 +707,33 @@ class AudioPlayer {
     const length = charLength || (sentenceText.slice(charIndex).match(/^\S+/)?.[0].length || 1);
     const last = Math.min(offsets.length - 1, charIndex + length - 1);
     const range = this._rangeForOffsets(element, chunk.textStart + offsets[charIndex], chunk.textStart + offsets[last] + 1);
-    if (range) CSS.highlights.set('learnflow-word', new Highlight(range));
+    if (range) {
+      this._highlightedWindows.add(win);
+      win.CSS.highlights.set('learnflow-word', new win.Highlight(range));
+    }
   }
 
   _clearHighlight() {
+    this._highlightedElements.forEach(el => {
+      try { el.classList.remove('learnflow-active-reading', 'learnflow-block-highlight'); } catch {}
+    });
+    this._highlightedElements.clear();
+
     const activeEls = (typeof ContentExtractor !== 'undefined' && ContentExtractor._querySelectorAllDeep)
       ? ContentExtractor._querySelectorAllDeep(document, '.learnflow-active-reading')
       : document.querySelectorAll('.learnflow-active-reading');
     activeEls.forEach(el => {
       el.classList.remove('learnflow-active-reading', 'learnflow-block-highlight');
     });
+
+    this._highlightedWindows.forEach(w => {
+      try {
+        w.CSS?.highlights?.delete('learnflow-word');
+        w.CSS?.highlights?.delete('learnflow-sentence');
+      } catch {}
+    });
+    this._highlightedWindows.clear();
+
     if (typeof CSS !== 'undefined' && CSS.highlights) {
       CSS.highlights.delete('learnflow-word');
       CSS.highlights.delete('learnflow-sentence');

@@ -65,7 +65,17 @@
 
 /* Highlight without inset stripes, padding changes, or overriding child backgrounds. */
 .learnflow-block-highlight {
-  background-color: rgba(250, 204, 21, 0.18) !important;
+  background-color: rgba(250, 204, 21, 0.22) !important;
+  outline: 2px solid rgba(245, 158, 11, 0.75) !important;
+  outline-offset: 2px !important;
+  border-radius: 4px;
+}
+
+pre.learnflow-active-reading,
+table.learnflow-active-reading,
+figure.learnflow-active-reading {
+  outline: 2px solid #f59e0b !important;
+  outline-offset: 3px !important;
 }
 
 /* Native CSS Custom Highlight API for zero-DOM-mutation sentence & word-by-word karaoke */

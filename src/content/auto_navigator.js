@@ -99,10 +99,15 @@ class AutoNavigator {
     const href = nextEl.getAttribute('href');
     sessionStorage.setItem('learnflow_navigation', JSON.stringify({
       from: this._canonical(window.location.href),
-      to: href ? this._canonical(href) : null,
       content: (document.querySelector('#sbo-rt-content, article, main')?.textContent || '').slice(0, 12000),
       timestamp: Date.now()
     }));
+    try {
+      await chrome.storage.local.set({
+        learnflow_auto_play_next: true,
+        learnflow_last_navigated: Date.now()
+      });
+    } catch {}
     // Keep navigation in the reader's tab, even if the site link targets _blank.
     if (href) window.location.assign(new URL(href, window.location.href).href);
     else {
@@ -113,6 +118,7 @@ class AutoNavigator {
       const hasIframes = document.querySelectorAll('iframe').length > 0;
       if (!hasIframes && pending && this._canonical(location.href) === pending.from && pending.content === content) {
         sessionStorage.removeItem('learnflow_navigation');
+        try { await chrome.storage.local.remove(['learnflow_auto_play_next', 'learnflow_auto_play_origin', 'learnflow_last_navigated']); } catch {}
         return false;
       }
     }
@@ -128,7 +134,9 @@ class AutoNavigator {
         } else {
           const current = this._canonical(window.location.href);
           const contentChanged = pending.content !== undefined && pending.content !== (document.querySelector('#sbo-rt-content, article, main')?.textContent || '').slice(0, 12000);
-          if ((current !== pending.from || contentChanged) && (!pending.to || current === pending.to)) {
+          // Allow HTTP redirects on Next links (e.g. skills.google /activities/... -> /documents/...):
+          // any URL or content change after advanceToNext() qualifies for auto-resume.
+          if (current !== pending.from || contentChanged) {
             sessionStorage.removeItem('learnflow_navigation');
             await chrome.storage.local.remove(['learnflow_auto_play_next', 'learnflow_auto_play_origin', 'learnflow_last_navigated']).catch(() => {});
             return true;

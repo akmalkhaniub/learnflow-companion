@@ -253,8 +253,9 @@ class PlayerUI {
       const seenEls = new Set();
       const opts = ['<option value="">Jump to section...</option>'];
       chunks.forEach((c, idx) => {
-        if (c.headingLevel > 0 && c.element && !seenEls.has(c.element)) {
-          seenEls.add(c.element);
+        const key = c.element || `remote_${c.frameChunkIndex ?? idx}_${c.text}`;
+        if (c.headingLevel > 0 && !seenEls.has(key)) {
+          seenEls.add(key);
           const indent = c.headingLevel > 2 ? '  ' : '';
           const label = (c.text || '').substring(0, 42) + ((c.text || '').length > 42 ? '…' : '');
           opts.push(`<option value="${idx}">${indent}${label.replace(/</g, '&lt;')}</option>`);

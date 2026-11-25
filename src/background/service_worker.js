@@ -435,7 +435,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.tts.speak(message.text || '', {
         rate: Number(message.rate) || 1.0,
         pitch: Number(message.pitch) || 1.0,
-        voiceName: message.voiceName || undefined,
+        lang: 'en-US',
+        enqueue: false,
         onEvent: (event) => {
           if (!tabId) return;
           if (event.type === 'word' || event.type === 'end' || event.type === 'error' || event.type === 'interrupted' || event.type === 'cancelled') {
