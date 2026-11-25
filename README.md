@@ -22,9 +22,10 @@
 ```bash
 npm install
 npm run build        # Bundles firebase/app, firebase/app-check, and firebase/ai into src/vendor/
+powershell -ExecutionPolicy Bypass -File .\package.ps1   # Creates dist/unpacked/ and dist/*.zip
 ```
 
-1. Open `chrome://extensions/`, enable **Developer mode**, and click **Load unpacked** on this folder.
+1. Open `chrome://extensions/`, enable **Developer mode**, and click **Load unpacked** on `dist/unpacked/` (or remove `node_modules/` before loading the root folder, since Chrome rejects `_`-prefixed files inside `node_modules`).
 2. Create a Firebase project in the [Firebase Console](https://console.firebase.google.com/), enable **Firebase AI Logic** and **App Check** (create an App Check debug token).
 3. Open the LearnFlow Side Panel → **Settings** → paste your Firebase Web Config JSON and App Check debug token → click **Save Firebase AI Settings** → **Test AI connection**.
 4. *(Optional)* Deploy the companion landing page to Firebase Hosting: `firebase deploy --only hosting`.

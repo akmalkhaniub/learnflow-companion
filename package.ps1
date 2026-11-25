@@ -43,8 +43,12 @@ try {
     }
 
     Compress-Archive -Path "$tempFolder\*" -DestinationPath $zipPath -CompressionLevel Optimal
+    $unpackedDir = Join-Path $distDir "unpacked"
+    if (Test-Path $unpackedDir) { Remove-Item -Recurse -Force $unpackedDir }
+    Copy-Item -Path $tempFolder -Destination $unpackedDir -Recurse -Force
     Write-Host "✅ Extension packaged successfully!" -ForegroundColor Green
     Write-Host "📁 Zip location: $zipPath" -ForegroundColor Yellow
+    Write-Host "📂 Clean unpacked folder: $unpackedDir" -ForegroundColor Yellow
     Write-Host "🚀 Upload this zip file directly to the Chrome Web Store Developer Console: https://chrome.google.com/webstore/devconsole" -ForegroundColor Cyan
 }
 finally {
