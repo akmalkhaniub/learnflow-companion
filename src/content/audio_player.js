@@ -110,7 +110,7 @@ class AudioPlayer {
     if (idx === -1) return false;
 
     this.playbackGeneration++;
-    this.synth.cancel();
+    this._cancelSpeech();
     this.currentIndex = idx;
     this.isPlaying = true;
     this.isPaused = false;
@@ -234,7 +234,7 @@ class AudioPlayer {
   previous() {
     if (this.currentIndex > 0) {
       this.playbackGeneration++;
-      this.synth.cancel();
+      this._cancelSpeech();
       this.completed = false;
       this.currentIndex--;
       if (this.isPlaying) {
@@ -250,7 +250,7 @@ class AudioPlayer {
     this.rate = Math.max(0.6, Math.min(1.6, newRate));
     if (this.isPlaying) {
       this.playbackGeneration++;
-      this.synth.cancel();
+      this._cancelSpeech();
       this._speakChunk(this.currentIndex);
     }
   }
@@ -389,13 +389,24 @@ class AudioPlayer {
       }
     };
 
+    let started = false;
+    let startWatchdog = null;
+    this.currentUtterance.onstart = () => {
+      started = true;
+      if (startWatchdog) { clearTimeout(startWatchdog); startWatchdog = null; }
+    };
+
     this.currentUtterance.onend = () => {
+      started = true;
+      if (startWatchdog) { clearTimeout(startWatchdog); startWatchdog = null; }
       if (!isCurrent()) return;
       this.currentIndex++;
       this._speakChunk(this.currentIndex);
     };
 
     this.currentUtterance.onerror = (e) => {
+      started = true;
+      if (startWatchdog) { clearTimeout(startWatchdog); startWatchdog = null; }
       if (!isCurrent()) return;
       if (e.error === 'interrupted' || e.error === 'canceled') return;
       if (e.error === 'not-allowed' && typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
@@ -417,6 +428,17 @@ class AudioPlayer {
     // Keep a strong reference (Chrome GC can drop utterances and silently stop playback)
     window.__lfUtterance = this.currentUtterance;
     this.synth.speak(this.currentUtterance);
+
+    // Watchdog: if Chrome silently drops speechSynthesis without a user gesture, fall back to chrome.tts
+    if (this.synth === window.speechSynthesis && typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      startWatchdog = setTimeout(() => {
+        if (!started && isCurrent() && !this.synth.speaking) {
+          try { this.synth.cancel(); } catch {}
+          this._useChromeTts = true;
+          this._speakViaChromeTts(textToSpeak, chunk, isCurrent);
+        }
+      }, 650);
+    }
   }
 
   _speakViaChromeTts(textToSpeak, chunk, isCurrent) {
@@ -609,8 +631,9 @@ class AudioPlayer {
       range = this._rangeForOffsets(element, chunk.textStart, chunk.textEnd);
       if (range) CSS.highlights.set('learnflow-sentence', new Highlight(range));
     }
-    // Only non-text blocks (or browsers without custom highlights) need a block tint.
-    if (!range) element.classList.add('learnflow-block-highlight');
+    // Shadow DOM elements need block tint because document-level ::highlight() does not always paint inside ShadowRoots.
+    const inShadow = typeof ShadowRoot !== 'undefined' && element.getRootNode?.() instanceof ShadowRoot;
+    if (!range || inShadow) element.classList.add('learnflow-block-highlight');
     if (Date.now() < (this.suppressAutoScrollUntil || 0)) return;
     const rect = range?.getBoundingClientRect() || element.getBoundingClientRect();
     let scroller = element.parentElement;

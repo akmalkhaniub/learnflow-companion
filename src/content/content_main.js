@@ -692,6 +692,9 @@
       const chunks = extractedData?.chunks || [];
       const text = chunks.map(c => c.text || '').join('\n') || extractedData?.contentEl?.textContent || '';
       if (chunks.length && (previousText === null || text !== previousText)) {
+        if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+          audioPlayer._useChromeTts = true;
+        }
         await handlePlay();
         playerUI.showToast('Reading next chapter');
         return;
