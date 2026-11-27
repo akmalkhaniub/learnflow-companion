@@ -1,171 +1,147 @@
-# 🎧 LearnFlow - Hands-Free Reader & Hybrid AI Companion (v1.5.2)
+# 🎧 LearnFlow — Hands-Free Reader & Hybrid AI Companion (v1.5.2)
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Firebase AI Logic](https://img.shields.io/badge/Firebase-AI%20Logic%20Hybrid-orange.svg)](https://firebase.google.com/docs/ai-logic/hybrid)
-[![Gemini AI](https://img.shields.io/badge/AI-Gemini%20Nano%20%26%20Flash-purple.svg)](https://ai.google.dev/)
+[![Gemini](https://img.shields.io/badge/AI-Gemini%20Nano%20%2B%203.5%20Flash--Lite-purple.svg)](https://ai.google.dev/)
 [![Version](https://img.shields.io/badge/Version-1.5.2-orange.svg)](https://github.com/akmalkhaniub/learnflow-companion)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> Turn any documentation, technical book, or tutorial into a **continuous hands-free audiobook**, powered by **Firebase AI Logic (Hybrid On-Device Gemini Nano + Cloud Fallback with App Check)** and a pluggable AI provider router.
+> A Chrome extension that turns technical books, documentation and tutorials into a **continuous hands-free audiobook**. It explains code, tables and figures out loud as it reads, then moves to the next chapter by itself. Its AI runs through **Firebase AI Logic hybrid inference**: on-device Gemini Nano when the device supports it, with automatic cloud fallback, protected by Firebase App Check.
+
+🎬 **Demo video:** _add link here_ · Built for **#BuildHybridAI 2026**
 
 ---
 
-## What's New in v1.5.0 (#BuildHybridAI 2026)
+## 🧑‍⚖️ For judges: try it in 5 minutes
 
-- **Firebase AI Logic (Hybrid Inference) + MV3 App Check:** Routes text tasks (Code Whisperer, 2-min Audio Brief, Study Quizzes, Anki Flashcards, Vault Search) through `InferenceMode.PREFER_ON_DEVICE` (Chrome Gemini Nano with automatic Cloud fallback) and multimodal **Figure Vision** through `InferenceMode.ONLY_IN_CLOUD`, secured by **Firebase App Check** (DOM-free `CustomProvider` + debug token support for MV3 Service Workers).
-- **Real Hybrid Route Telemetry (`response.inferenceSource`):** Displays the exact engine returned by Firebase AI Logic (`⚡ On-Device` vs `☁️ Cloud`) plus latency in milliseconds.
-- **Pluggable AI Provider Switcher (`AIRouter`):** Defaults to `Firebase AI Logic (Hybrid)`, with `Direct Gemini (Developer Fallback)` available in Settings and a provider registry for future backends.
-- **Smart Bar + Multi-Frame, Shadow DOM & Interactive Lesson Support:** Compact floating/dockable Smart Bar with one-click Side Panel toggle, word-by-word highlighting inside cross-frame (`skills.google`), Shadow DOM, `.fr-view` callouts, and bounded accordions/tabs/process slides, plus `chrome.tts` autoplay fallback across redirected next pages.
-
-### Build, Test & Run Locally (Firebase AI Logic)
+**1. Install (no build step needed)**
 
 ```bash
-npm install
-npm run build                                           # Bundles firebase/app, firebase/app-check, and firebase/ai into src/vendor/
-powershell -ExecutionPolicy Bypass -File .\package.ps1  # Creates clean dist/unpacked/ and dist/*.zip
-node --test tests/regression.test.cjs                   # 22 unit/regression tests
-python tests/e2e_test.py                                # 18 Playwright E2E browser tests
+git clone https://github.com/akmalkhaniub/learnflow-companion.git
 ```
 
-1. Open `chrome://extensions/`, enable **Developer mode**, and click **Load unpacked** on `dist/unpacked/` (or remove `node_modules/` before loading the root folder, since Chrome rejects `_`-prefixed files inside `node_modules`).
-2. In the [Firebase Console](https://console.firebase.google.com/), enable **AI Logic** (`Gemini Developer API`) and **App Check** → **Apps** → **Manage debug tokens** → create a debug token.
-3. Open the LearnFlow Side Panel → **Settings** (pre-filled with `learnflow-hybrid-ai`, or paste your own Firebase Web Config JSON) → paste your **App Check debug token** → click **Save Firebase AI Settings** → **Test AI connection**.
-4. Deploy the hosted companion page (`public/index.html`): `firebase deploy --only hosting`.
+Open `chrome://extensions/`, turn on **Developer mode**, click **Load unpacked**, and select the cloned `learnflow-companion` folder. Pin **LearnFlow** to the toolbar. (Don't run `npm install` first. Chrome refuses to load a folder whose `node_modules/` contains `_`-prefixed files. The Firebase SDK bundle is already committed in `src/vendor/`.)
 
-## What's New in v1.3.0
+**2. Turn on the AI (30 seconds)**
 
-Open **Study** in the side panel while viewing an article:
+The Firebase project config is pre-filled, so you only need an **App Check debug token**:
 
-- **Chapter outline:** Select a heading to start reading there. Refresh current section after moving through the article.
-- **Bookmarks with notes:** Save the current reading passage with a personal note, edit or delete it later, and resume from that passage across pages. Bookmarks remain on this device (up to 500); changed or removed passages report an error instead of jumping to an unrelated sentence.
-- **Section quizzes:** Request three multiple-choice questions, answer them, then reveal your score and explanations. Requires configured AI and sufficient section text. Cloud mode sends the current section to Gemini only when requested; personal bookmark notes are excluded. Check AI explanations against the source.
+1. Copy the judge token from the **private submission notes**. It's not in this public repo.
+2. Press `Alt+Shift+L` to open the Side Panel, then go to **Settings → ✨ AI Provider & Hybrid Configuration**.
+3. Paste the token into **Firebase App Check Debug Token**, click **Save Firebase AI Settings**, then click **Test AI connection**.
+4. You should see `AI connection works (Cloud · gemini-3.5-flash-lite)`, or `On-Device Nano` on a device that supports it.
 
-Reload the unpacked extension at `chrome://extensions`, then refresh article tabs and reopen the side panel. Confirm **v1.3.0** in the header. A GitHub push does not update an installed extension automatically.
+**3. Demo path**
 
-## Earlier features (v1.2.0)
+| Try this | What you'll see |
+| :--- | :--- |
+| Open any technical article with code blocks, click the LearnFlow toolbar icon, then press ▶ | Sentence-by-sentence highlighting. Each code block is read as one plain-English sentence (**Code Whisperer**). |
+| Press `Alt+G` on the article | A spoken **2-minute audio brief** of the page |
+| Look at the AI route badge in the Side Panel | `⚡ On-Device` or `☁️ Cloud`, plus latency, as reported by Firebase (`response.inferenceSource`) |
+| Side Panel → **Study** → generate a quiz | Three multiple-choice questions about the current section |
+| Type `lf what is this page about?` in the address bar | The Side Panel opens with the answer |
+| Reach the end of an O'Reilly chapter or Google Skills step | LearnFlow clicks **Next** and keeps reading |
 
-* 💻 **Smart Code Whisperer:** Instead of robotic syntax, code blocks are automatically translated into 1 natural spoken sentence describing what the code does.
-* 📑 **Multi-Tab Playlist Queue:** Line up 5 chapters, tutorials, or YouTube videos across open tabs; LearnFlow autoplays through them in sequence like Spotify.
-* ⏱️ **Sleep & Pomodoro Timer:** Set a 15m, 25m (Pomodoro), or 45m timer that automatically stops audio and pauses auto-advance.
-* 📇 **Instant Anki Flashcards:** Automatically generates 5 high-yield active-recall flashcards from any chapter/video with 1-click `.csv` export.
-* 🔍 **Semantic Vault Search:** Ask Gemini in the Side Panel: *"Summarize the Kubernetes tutorials I studied last week"*, and it queries your saved notes.
-* 📓 **Obsidian Vault Sync:** Direct folder path configuration to save Markdown notes straight into your Obsidian Vault.
+> **About Gemini Nano:** on-device inference only runs where Chrome's built-in AI is supported (roughly: a GPU with more than 4 GB of VRAM, or 16 GB+ of RAM with 4+ CPU cores, plus about 22 GB of free disk). See Chrome's [built-in AI requirements](https://developer.chrome.com/docs/ai/get-started). Settings shows Chrome's real status and offers a **⬇️ Download Gemini Nano** button when the model can be downloaded. Everywhere else, the same features run in the cloud automatically. `chrome://on-device-internals` shows what Chrome reports for your device.
 
 ---
 
-## 🚀 Core Feature Breakdown
+## 🧠 How hybrid inference works
 
+```mermaid
+flowchart LR
+  CS["Content script<br/>(reader, Smart Bar)"] -- "AI_ROUTER_CALL message" --> SW["Background service worker"]
+  SP["Side Panel"] --> R["AIRouter"]
+  SW --> R
+  R -- "default" --> F["FirebaseAIProvider<br/>(Firebase AI Logic + App Check)"]
+  R -- "developer fallback" --> D["GeminiAI<br/>(direct API key / Nano)"]
+  F -- "PREFER_ON_DEVICE" --> N["Gemini Nano<br/>(Chrome LanguageModel)"]
+  F -- "fallback / ONLY_IN_CLOUD" --> C["gemini-3.5-flash-lite<br/>(Gemini Developer API)"]
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        LearnFlow 1.2 Architecture                      │
-├──────────────────────────┬───────────────────────┬─────────────────────┤
-│ 1. Hands-Free Audio      │ 2. Ask Gemini AI      │ 3. Deep Archiver    │
-│ - O'Reilly next chapter  │ - 2-Min Audio Brief   │ - Preserves tables  │
-│ - Google Skills next step│ - Smart Code Whisperer│ - Base64 diagrams   │
-│ - Multi-Tab Queue        │ - Anki Flashcard Gen  │ - Local & Obsidian  │
-│ - Sleep & Pomodoro Timer │ - Semantic Vault Q&A  │ - Google Drive Sync │
-└──────────────────────────┴───────────────────────┴─────────────────────┘
-```
 
-### 1. Hands-Free Audio Reading & Auto-Navigation
-- **Native Browser Voices:** Completely offline, free, and instant audio playback using high-quality system voices with adjustable speed ($0.8\times$ to $2.2\times$).
-- **O'Reilly Learning Platform:** Auto-detects chapter completion, flips to the next chapter (`a[data-testid="next-link"]`), and continues reading without touching your mouse.
-- **Google Cloud Skills Boost (`skills.google`):** Automatically navigates sequential lab steps.
-- **Karaoke Highlighting:** Soft visual highlighting on the active sentence with smooth auto-scroll.
+| Task | Inference mode | Why |
+| :--- | :--- | :--- |
+| Code Whisperer, table summaries, audio briefs, section quizzes, Anki cards, vault search | `PREFER_ON_DEVICE` (configurable) | Short text tasks run privately and offline on Nano when they can, and fall back to the cloud when they can't |
+| Figure explanations (image + caption + nearby text) | `ONLY_IN_CLOUD` | Multimodal vision needs the cloud model |
 
-### 2. "Ask Gemini" Companion
-- **Omnibox Address Bar Integration:** Type `lf <your question>` in Chrome's URL bar, press `Enter`, and the Side Panel immediately opens with Gemini's contextual answer!
-- **2-Minute Executive Audio Briefs:** Click **✨** on the floating player to generate a concise, spoken executive summary tailored for listening on the go.
-- **Smart Code Whisperer:** Understand code without reading curly braces and commas.
-- **Hybrid AI Engine:** Runs on-device with Chrome's built-in **Gemini Nano** when available, or falls back to **Gemini 3.5 Flash-Lite** in the cloud through Firebase AI Logic.
-
-### 3. Deep Archival (Tables, Figures, & Multi-Cloud Storage)
-- **Tables Preserved:** Automatically converts HTML tables into clean GitHub-flavored Markdown tables.
-- **Self-Contained Illustrations:** Converts diagrams and figures into embedded **Base64 Data URLs** so notes render images offline.
-- **Obsidian / Local Disk Vault:** Saves directly to `Downloads/LearnFlow_Vault/` or your configured Obsidian folder.
-- **Google Drive Sync:** Direct synchronization to a dedicated `LearnFlow Vault` folder in your Google Drive via the included Google Apps Script webhook.
-
-### 4. YouTube Video Study Guide Generator
-- **Transcript Extraction:** Pulls video scripts with chronological timestamps.
-- **Keyframe Canvas Capture:** Grabs high-res screenshots from the HTML5 video player and bundles them directly into your notes.
+- **One router, swappable providers.** `AIRouter` sends every AI call to the active provider. Firebase AI Logic is the default. Direct Gemini (your own API key) remains available as a developer fallback.
+- **Works inside Manifest V3.** Content scripts can't run App Check, so they pass AI calls to the service worker. The worker loads the Firebase SDK with a static import, because service workers forbid dynamic `import()`. The worker has no DOM for reCAPTCHA, so App Check uses a DOM-free `CustomProvider` with debug tokens.
+- **The badge shows the real route.** It reads `response.inferenceSource` from the SDK instead of guessing.
+- **Configurable from Settings:** inference mode (Prefer On-Device / Cloud Only / On-Device Only) and cloud model.
 
 ---
 
-## ⌨️ Quick Shortcuts
+## ✨ Features
+
+**Hands-free reading**
+- Native browser voices (offline, free) at 0.8×–2.2× speed, with highlighting that follows the current sentence
+- Automatic **Next chapter** on O'Reilly Learning, **next lab step** on Google Skills (`skills.google`), and generic Next links or buttons. **Choose Next** lets you pick the control yourself.
+- Works across same-origin iframes, Shadow DOM, callouts, and interactive lessons (accordions, tabs, flashcards, process slides)
+- Read from here, previous/next section, and an optional **Follow my scroll** mode
+- **Multi-tab playlist queue** that autoplays through queued pages, plus a sleep / Pomodoro timer (15, 25 or 45 minutes)
+
+**AI companion**
+- **Code Whisperer:** code blocks are spoken as one natural sentence instead of syntax
+- **Figure and table explanations** while reading
+- **2-minute audio brief** (`Alt+G`), **section quizzes**, **Anki flashcards** (CSV export), **vault search** over your saved notes
+- Right-click: "✨ Ask Gemini to explain this snippet" or "🎧 Read aloud"
+
+**Study and archive**
+- **Home** with Resume, a chapter outline, and bookmarks with personal notes (stored only on this device)
+- **Archive to Markdown:** tables become GitHub-flavoured Markdown, and figures are saved as separate images
+- **YouTube study guides** with transcript timestamps and captured keyframes
+- Optional **Google Drive sync** through your own Apps Script webhook
+
+### ⌨️ Shortcuts
 
 | Shortcut | Action |
 | :--- | :--- |
-| `lf <query>` in Address Bar | Ask Gemini or search your vault |
-| `Alt + L` | Toggle Audio Play / Pause |
-| `Alt + G` | Generate 2-Minute Gemini Audio Brief |
-| `Alt + Shift + L` | Toggle Chrome Side Panel |
-| Right-Click Selection | "✨ Ask Gemini to explain this snippet" or "🎧 Read aloud" |
+| `lf <query>` in the address bar | Ask Gemini or search your vault |
+| `Alt + L` | Play / pause |
+| `Alt + G` | 2-minute audio brief |
+| `Alt + Shift + L` | Toggle the Side Panel |
 
 ---
 
-## 📦 Installation (Developer Mode)
+## ⚙️ Settings explained
 
-1. Clone or download this repository:
-   ```bash
-   git clone https://github.com/akmalkhaniub/learnflow-companion.git
-   ```
-2. Open Google Chrome and navigate to:
-   ```text
-   chrome://extensions/
-   ```
-3. Enable **Developer mode** (toggle in the top-right corner).
-4. Click **Load unpacked** (top-left) and select the `learnflow-companion` folder.
-5. Pin **LearnFlow** to your browser toolbar.
+| Setting | What it does |
+| :--- | :--- |
+| **AI Provider** | **Firebase AI Logic** (default, hybrid) or **Direct Gemini** (developer fallback with your own [AI Studio](https://aistudio.google.com) key) |
+| **Firebase Web Config** | Pre-filled with the `learnflow-hybrid-ai` project. Firebase web config values are public identifiers, not secrets. You can paste your own project's config instead. |
+| **App Check Debug Token** | Lets this browser pass App Check. Create one in Firebase Console → App Check → Apps → Manage debug tokens. |
+| **Hybrid Inference Mode / Cloud Fallback Model** | Where text tasks run, and which cloud model is used (default `gemini-3.5-flash-lite`) |
+| **📓 Obsidian & Local Storage** | The folder inside `Downloads/` where archived Markdown notes and images are saved (default `LearnFlow_Vault`). Point it at an Obsidian vault inside Downloads and notes appear in Obsidian automatically. Chrome only lets extensions save inside Downloads. |
+| **☁️ Google Drive Sync** | Optional. In LearnFlow, click **📋 Copy Script**. In [script.google.com](https://script.google.com), create a project and paste it, then choose **Deploy → Web app** (*Execute as:* Me, *Who has access:* Anyone). Paste the `/exec` URL into LearnFlow. Anyone with that URL can upload to the folder, so keep it private. |
 
 ---
 
-## ☁️ Google Drive Sync Setup (Optional, 1 Minute)
+## 🛠️ Development
 
-1. Open [script.google.com](https://script.google.com) and click **New project**.
-2. Open the **Settings tab** in LearnFlow's Side Panel and click **"📋 Copy Apps Script Code"**.
-3. Paste the code into the script editor.
-4. Click **Deploy** -> **New deployment** -> Select **Web app**:
-   - *Execute as:* **Me**
-   - *Who has access:* **Anyone**
-5. Copy the generated Web app URL (ends with `/exec`).
-6. Paste the URL into the **Google Apps Script Webhook URL** field in LearnFlow's Settings and click **Save**.
+```bash
+npm install                                             # esbuild + Firebase SDK
+npm run build                                           # Rebuilds src/vendor/firebase-ai-bundle.js
+powershell -ExecutionPolicy Bypass -File .\package.ps1  # Creates dist/unpacked/ and dist/learnflow-companion-v<version>.zip
+node tests/regression.test.cjs                          # 22 regression tests (no dependencies)
+python tests/e2e_test.py                                # 18 Playwright E2E tests (Microsoft Edge on Windows)
+```
+
+After `npm install`, load `dist/unpacked/` instead of the repo root. After changing code, reload the extension at `chrome://extensions/` and refresh open article tabs. The Side Panel header shows the loaded version.
+
+**Project layout:** `src/content/` (extraction, reader, auto-navigation, Smart Bar) · `src/background/` (service worker, AI bridge, queue, downloads) · `src/sidepanel/` (Home, Study, History, Settings) · `src/utils/` (AI router and providers, Markdown builder, Drive sync) · `public/` (Firebase Hosting landing page)
 
 ---
+
+## ⚠️ Known limitations
+
+- **App Check debug tokens are for development and judging only.** A public release needs a production attestation provider. reCAPTCHA can't run on a `chrome-extension://` origin, so one option is a token page on Firebase Hosting or a custom backend provider.
+- **Gemini Nano depends on the device** (see above). Unsupported devices always use the cloud model.
+- The tests use local page fixtures and mocked AI responses. Signed-in O'Reilly pages are not covered by automated tests.
+
+## 🔒 Privacy
+
+Reading, text-to-speech and storage happen locally. AI features send the relevant page text to Gemini, on-device or through Firebase AI Logic. See [PRIVACY.md](PRIVACY.md) for exactly what is sent and when.
 
 ## 📄 License
 
-MIT License. Open source and free for personal and community use.
-
-
-## Reliability update & Resume home
-
-The side panel now opens on Home, with the most recent saved article, a Resume button, and the next three queued pages. Briefs and selected-text playback do not change article progress or trigger chapter completion. Queue entries remain queued until the destination reader confirms it has started; failed handoffs can be retried.
-
-History records pages used with LearnFlow, not unrelated browsing. Existing history can be cleared in the History tab. Drive sync validates server responses and uploads separate figure assets. **Existing Apps Script users must copy the updated script from Settings and redeploy their web app to enable figure uploads.** Failed cloud sync is shown separately from successful local saving.
-
-### Verification
-
-- `node tests/regression.test.cjs` — Drive response handling and interrupted narration regression tests (no dependencies).
-- `python tests/e2e_test.py` — browser tests using Python Playwright and Microsoft Edge on Windows. Includes Home/resume, playback isolation, privacy, archival, and queue handoff. Screenshots are written to `tests/artifacts/`.
-
-
-### v1.2.7 reader fixes
-
-Text highlights follow the active sentence without an inset stripe covering the left edge. Speech errors pause at the current sentence for retry; finishing retains the last position on screen. Archiving no longer rebuilds the playback queue, fragment-only URL changes do not restart reading, and rapid navigation saves positions in order.
-
-After updating, reload the unpacked extension and refresh the article tab to replace its existing content scripts. The side-panel header displays the loaded version.
-
-
-### v1.2.8 automatic chapter advance
-
-Progress reaches 100% only after the final sentence finishes. Automatic archival skips AI flashcards and limits image fetching to a four-second budget (remaining images retain their source URLs), so these requests cannot hold up chapter navigation. Manual archival still generates flashcards when configured. Auto-Next respects the configured delay, ignores disabled/hidden/self links, and keeps its resume marker in the current tab. The next page waits for readable content before starting; missing Next links and disabled Auto-Next show an explanation.
-
-
-### v1.2.9 reading controls and figure explanations
-
-- Scroll, then use the crosshair button or Settings → Read from here. Previous/Next section jumps between headings. Optional Follow my scroll pauses listening during a wheel/touch/keyboard scroll and resumes at visible text after scrolling settles.
-- Settings shows the detected Next control. Next page now tests it immediately; Choose Next lets you select an enabled page control for the current chapter. O'Reilly navigation also checks actual ordered book TOC links and ignores current-chapter fragments; no chapter URLs are guessed. Buttons that replace chapter content without changing the URL are handled.
-- Figure explanations use image pixels, captions, and nearby prose, describing components, relationships, flow, and takeaway. Failures show their cause, explicitly read “Caption only,” and can be retried with Explain visible figure. Cross-origin image retrieval can use the extension's existing host permissions.
-- The cloud client now uses Gemini Interactions with `gemini-3.5-flash-lite` by default, a configurable model, a request timeout, and `store: false`. Settings → Test AI connection checks saved credentials. A cloud API key is required for figure explanations, and provider usage charges may apply.
-
-Validation uses local browser fixtures and mocked AI responses. The signed-in O'Reilly page and real Gemini account have not been verified by these tests. Reload the extension and refresh the article tab after updating.
+MIT. See [LICENSE](LICENSE).
