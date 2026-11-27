@@ -8,7 +8,7 @@
 
 > A Chrome extension that turns technical books, documentation and tutorials into a **continuous hands-free audiobook**. It explains code, tables and figures out loud as it reads, then moves to the next chapter by itself. Its AI runs through **Firebase AI Logic hybrid inference**: on-device Gemini Nano when the device supports it, with automatic cloud fallback, protected by Firebase App Check.
 
-🎬 **Demo video:** _add link here_ · Built for **#BuildHybridAI 2026**
+🌐 **Landing page:** [learnflow-hybrid-ai.web.app](https://learnflow-hybrid-ai.web.app) · 🎬 **Demo video:** _add link here_ · Built for **#BuildHybridAI 2026**
 
 ---
 
