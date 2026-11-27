@@ -8,6 +8,11 @@ import { GDriveSync } from '../utils/gdrive.js';
 import '../utils/gemini_ai.js';
 import '../utils/firebase_ai_provider.js';
 import '../utils/ai_router.js';
+// Service workers forbid dynamic import(), so load the Firebase SDK statically here
+// and hand it to the provider (extension pages keep using the lazy import path).
+import * as FirebaseSDK from '../vendor/firebase-ai-bundle.js';
+
+globalThis.FirebaseAIProvider._sdk = FirebaseSDK;
 
 // Open the compact Smart Bar on toolbar icon click (user can open the full Side Panel from the bar or Alt+Shift+L)
 chrome.sidePanel
