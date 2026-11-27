@@ -1,9 +1,9 @@
-# 🎧 LearnFlow - Hands-Free Reader & Hybrid AI Companion (v1.5.1)
+# 🎧 LearnFlow - Hands-Free Reader & Hybrid AI Companion (v1.5.2)
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Firebase AI Logic](https://img.shields.io/badge/Firebase-AI%20Logic%20Hybrid-orange.svg)](https://firebase.google.com/docs/ai-logic/hybrid)
 [![Gemini AI](https://img.shields.io/badge/AI-Gemini%20Nano%20%26%20Flash-purple.svg)](https://ai.google.dev/)
-[![Version](https://img.shields.io/badge/Version-1.5.1-orange.svg)](https://github.com/akmalkhaniub/learnflow-companion)
+[![Version](https://img.shields.io/badge/Version-1.5.2-orange.svg)](https://github.com/akmalkhaniub/learnflow-companion)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > Turn any documentation, technical book, or tutorial into a **continuous hands-free audiobook**, powered by **Firebase AI Logic (Hybrid On-Device Gemini Nano + Cloud Fallback with App Check)** and a pluggable AI provider router.

@@ -25,18 +25,69 @@ class GeminiAI {
     return this.parseSectionQuiz(raw);
   }
   /**
-   * Check if Chrome's on-device Gemini Nano is available
+   * Chrome's built-in Prompt API: the global LanguageModel (current Chrome),
+   * or the retired experimental window.ai.languageModel on older builds.
    */
-  static async checkNanoAvailability() {
+  static _languageModel() {
+    if (typeof globalThis === 'undefined') return null;
+    return globalThis.LanguageModel || globalThis.ai?.languageModel || null;
+  }
+
+  /**
+   * On-device Gemini Nano state as reported by Chrome:
+   * 'available' | 'downloadable' | 'downloading' | 'unavailable' | 'unsupported' (no Prompt API).
+   */
+  static async getNanoStatus() {
+    const lm = this._languageModel();
+    if (!lm) return 'unsupported';
     try {
-      if (typeof window !== 'undefined' && window.ai && window.ai.languageModel) {
-        const capabilities = await window.ai.languageModel.capabilities();
-        return capabilities.available !== 'no';
+      if (typeof lm.availability === 'function') {
+        const state = await lm.availability();
+        if (state === 'readily') return 'available';
+        if (state === 'after-download') return 'downloadable';
+        return state || 'unavailable';
+      }
+      if (typeof lm.capabilities === 'function') {
+        const cap = await lm.capabilities();
+        if (cap?.available === 'readily') return 'available';
+        if (cap?.available === 'after-download') return 'downloadable';
+        return 'unavailable';
       }
     } catch {
-      return false;
+      return 'unavailable';
     }
-    return false;
+    return 'unavailable';
+  }
+
+  /**
+   * Check if Chrome's on-device Gemini Nano is ready to run now
+   */
+  static async checkNanoAvailability() {
+    return (await this.getNanoStatus()) === 'available';
+  }
+
+  /**
+   * Start (or continue) the on-device model download. Must be called from a user gesture.
+   * @param {(fraction: number) => void} onProgress
+   */
+  static async downloadNano(onProgress = () => {}) {
+    const lm = this._languageModel();
+    if (!lm) throw new Error("This browser doesn't support Chrome's built-in AI (Prompt API).");
+    const session = await lm.create({
+      monitor(m) {
+        m.addEventListener('downloadprogress', (e) => onProgress(e.loaded));
+      }
+    });
+    session.destroy?.();
+  }
+
+  static async _createNanoSession(systemPrompt) {
+    const lm = this._languageModel();
+    if (!lm) throw new Error('Gemini Nano is not available.');
+    // Current API takes the system prompt as an initial message; the retired window.ai API took systemPrompt.
+    return globalThis.LanguageModel
+      ? lm.create({ initialPrompts: [{ role: 'system', content: systemPrompt }] })
+      : lm.create({ systemPrompt });
   }
 
   /**
@@ -69,9 +120,9 @@ class GeminiAI {
 
     if (status.mode === 'nano') {
       try {
-        const session = await window.ai.languageModel.create({
-          systemPrompt: 'You are an expert learning assistant. Keep responses clear, concise, well-structured, and ready to be listened to as spoken audio or read as structured notes.'
-        });
+        const session = await this._createNanoSession(
+          'You are an expert learning assistant. Keep responses clear, concise, well-structured, and ready to be listened to as spoken audio or read as structured notes.'
+        );
         const combined = contextText ? `[Context]:\n${contextText.substring(0, 8000)}\n\n[Instruction]:\n${prompt}` : prompt;
         const response = await session.prompt(combined);
         session.destroy();
@@ -81,7 +132,7 @@ class GeminiAI {
       }
     }
 
-    return "To enable Ask Gemini, please enter your free Gemini API key in the Side Panel Settings (aistudio.google.com), or enable Chrome's Built-in AI flags (chrome://flags/#prompt-api-for-gemini-nano).";
+    return "To enable Ask Gemini, please enter your free Gemini API key in the Side Panel Settings (aistudio.google.com), or download Gemini Nano from Settings if your device supports Chrome's built-in AI.";
   }
 
   /**

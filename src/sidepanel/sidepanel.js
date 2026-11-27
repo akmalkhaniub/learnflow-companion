@@ -611,17 +611,23 @@ async function initSettings() {
   const directPanel = document.getElementById('direct-gemini-settings-panel');
   // On-device status wording depends on the provider: Firebase AI Logic falls back to its own
   // cloud model, so it must not ask for a Direct Gemini API key.
-  let nanoAvailable = null;
+  let nanoState = null;
   const refreshNanoStatus = (providerId) => {
     const nanoStatus = document.getElementById('nano-status-label');
-    if (!nanoStatus || nanoAvailable === null) return;
-    if (nanoAvailable) {
-      nanoStatus.textContent = '✓ Chrome built-in Gemini Nano detected — on-device AI is available.';
-    } else if (providerId === 'firebase_ai_logic') {
-      nanoStatus.textContent = 'ℹ️ Gemini Nano isn\'t available in this browser, so Firebase AI Logic will use its Cloud Fallback Model.';
-    } else {
-      nanoStatus.textContent = 'ℹ️ Gemini Nano isn\'t available in this browser. Add a Gemini API key above for cloud AI and figure explanations.';
-    }
+    const downloadBtn = document.getElementById('btn-download-nano');
+    if (!nanoStatus || nanoState === null) return;
+    const fallback = providerId === 'firebase_ai_logic'
+      ? 'Firebase AI Logic will use its Cloud Fallback Model.'
+      : 'Add a Gemini API key above for cloud AI and figure explanations.';
+    const messages = {
+      available: '✓ Chrome built-in Gemini Nano is ready — on-device AI is available.',
+      downloadable: `ℹ️ Gemini Nano is supported but not downloaded yet. Download it below; until then, ${fallback.charAt(0).toLowerCase()}${fallback.slice(1)}`,
+      downloading: `⏳ Gemini Nano is downloading in Chrome. Until it finishes, ${fallback.charAt(0).toLowerCase()}${fallback.slice(1)}`,
+      unavailable: `ℹ️ Chrome reports Gemini Nano is unavailable on this device (it needs a capable GPU or 16 GB RAM, plus free disk space). ${fallback}`,
+      unsupported: `ℹ️ This browser doesn't expose Chrome's built-in AI (Prompt API). ${fallback}`
+    };
+    nanoStatus.textContent = messages[nanoState] || messages.unavailable;
+    if (downloadBtn) downloadBtn.style.display = nanoState === 'downloadable' || nanoState === 'downloading' ? 'inline-block' : 'none';
   };
   const toggleProviderPanels = (providerId) => {
     const isFirebase = providerId === 'firebase_ai_logic';
@@ -724,8 +730,26 @@ async function initSettings() {
     finally { event.target.disabled = false; }
   });
 
-  nanoAvailable = await GeminiAI.checkNanoAvailability();
+  nanoState = await GeminiAI.getNanoStatus();
   refreshNanoStatus(providerSelect?.value || activeProvider);
+
+  document.getElementById('btn-download-nano')?.addEventListener('click', async (event) => {
+    const btn = event.currentTarget;
+    const nanoStatus = document.getElementById('nano-status-label');
+    btn.disabled = true;
+    try {
+      await GeminiAI.downloadNano((fraction) => {
+        if (nanoStatus) nanoStatus.textContent = `⏳ Downloading Gemini Nano… ${Math.round(fraction * 100)}%`;
+      });
+    } catch (error) {
+      if (nanoStatus) nanoStatus.textContent = `Gemini Nano download failed: ${error.message}`;
+      btn.disabled = false;
+      return;
+    }
+    nanoState = await GeminiAI.getNanoStatus();
+    refreshNanoStatus(providerSelect?.value || activeProvider);
+    btn.disabled = false;
+  });
 
   const webhookInput = document.getElementById('setting-gdrive-webhook');
   if (webhookInput && data.gdrive_webhook_url) {
