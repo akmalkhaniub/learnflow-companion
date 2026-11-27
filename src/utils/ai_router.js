@@ -18,7 +18,7 @@ class AIRouter {
   static listProviders() {
     return [
       { id: 'firebase_ai_logic', label: 'Firebase AI Logic (Hybrid: On-Device + Cloud)' },
-      { id: 'direct_gemini', label: 'Direct Gemini (API Key / Chrome Nano)' }
+      { id: 'direct_gemini', label: 'Direct Gemini (Developer Fallback — API Key / Nano)' }
     ];
   }
 

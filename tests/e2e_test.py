@@ -579,7 +579,7 @@ def run_tests():
         server.shutdown()
         shutil.rmtree(user_data_dir, ignore_errors=True)
 
-    print("\nALL 16 E2E BROWSER TESTS PASSED!")
+    print("\nALL 18 E2E BROWSER TESTS PASSED!")
 
 
 if __name__ == "__main__":

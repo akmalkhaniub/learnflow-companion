@@ -632,10 +632,11 @@ async function initSettings() {
   const fbTokenInput = document.getElementById('setting-appcheck-token');
   const fbModeSelect = document.getElementById('setting-firebase-mode');
   const fbModelInput = document.getElementById('setting-firebase-model');
-  if (fbConfigInput && data.learnflow_firebase_config) {
-    fbConfigInput.value = typeof data.learnflow_firebase_config === 'string'
-      ? data.learnflow_firebase_config
-      : JSON.stringify(data.learnflow_firebase_config, null, 2);
+  if (fbConfigInput) {
+    const cfg = data.learnflow_firebase_config || (typeof FirebaseAIProvider !== 'undefined' ? FirebaseAIProvider.DEFAULT_FIREBASE_CONFIG : null);
+    if (cfg) {
+      fbConfigInput.value = typeof cfg === 'string' ? cfg : JSON.stringify(cfg, null, 2);
+    }
   }
   if (fbTokenInput && data.learnflow_appcheck_debug_token) {
     fbTokenInput.value = data.learnflow_appcheck_debug_token;

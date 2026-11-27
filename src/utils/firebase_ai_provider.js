@@ -7,10 +7,23 @@ class FirebaseAIProvider {
   static id = 'firebase_ai_logic';
   static label = 'Firebase AI Logic (Hybrid: On-Device + Cloud)';
 
+  // Default public Firebase Web App config for LearnFlow (#BuildHybridAI 2026)
+  // Secured via Firebase App Check; users can override with their own project in Settings.
+  static DEFAULT_FIREBASE_CONFIG = {
+    apiKey: 'AIzaSyDXZRCfnzjgdvhRt3Slgu4x7yh6B2PC0Bo',
+    authDomain: 'learnflow-hybrid-ai.firebaseapp.com',
+    projectId: 'learnflow-hybrid-ai',
+    storageBucket: 'learnflow-hybrid-ai.firebasestorage.app',
+    messagingSenderId: '202486641212',
+    appId: '1:202486641212:web:3d0ffd7c028f268a1e0939',
+    measurementId: 'G-5XPMZTGVHG'
+  };
+
   static _sdk = null;
   static _app = null;
   static _ai = null;
   static _appCheckInitialized = false;
+  static _appCheckError = null;
   static _configHash = '';
   static _lastMeta = null;
 
@@ -28,15 +41,16 @@ class FirebaseAIProvider {
       'learnflow_appcheck_debug_token',
       'learnflow_appcheck_recaptcha_key',
       'learnflow_firebase_model',
+      'learnflow_firebase_mode',
       'learnflow_firebase_inference_mode'
     ]);
 
-    let config = data.learnflow_firebase_config || null;
+    let config = data.learnflow_firebase_config || this.DEFAULT_FIREBASE_CONFIG;
     if (typeof config === 'string') {
       try {
         config = JSON.parse(config);
       } catch {
-        config = null;
+        config = this.DEFAULT_FIREBASE_CONFIG;
       }
     }
 
@@ -45,7 +59,7 @@ class FirebaseAIProvider {
       debugToken: (data.learnflow_appcheck_debug_token || '').trim(),
       recaptchaKey: (data.learnflow_appcheck_recaptcha_key || '').trim(),
       modelName: (data.learnflow_firebase_model || 'gemini-2.5-flash-lite').trim(),
-      inferenceMode: data.learnflow_firebase_inference_mode || 'prefer_on_device'
+      inferenceMode: data.learnflow_firebase_mode || data.learnflow_firebase_inference_mode || 'prefer_on_device'
     };
   }
 
@@ -54,8 +68,8 @@ class FirebaseAIProvider {
   }
 
   static async isAvailable() {
-    const { config } = await this._getSettings();
-    if (!this._isValidConfig(config)) {
+    const { config, debugToken, recaptchaKey } = await this._getSettings();
+    if (!this._isValidConfig(config) || !(debugToken || recaptchaKey)) {
       return { available: false, mode: 'none', provider: this.id };
     }
     return { available: true, mode: 'hybrid', provider: this.id };
@@ -98,21 +112,37 @@ class FirebaseAIProvider {
       this._app = existing || sdk.initializeApp(settings.config, appName);
 
       if (!this._appCheckInitialized) {
+        const hasDom = typeof document !== 'undefined';
         if (settings.debugToken) {
           self.FIREBASE_APPCHECK_DEBUG_TOKEN =
             settings.debugToken.toLowerCase() === 'true' || settings.debugToken.toLowerCase() === 'auto'
               ? true
               : settings.debugToken;
+        } else if (!hasDom || !settings.recaptchaKey) {
+          // Enable App Check debug token mode automatically in MV3 extension contexts without reCAPTCHA site key
+          self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
         }
+
+        // Use DOM-free CustomProvider in Service Workers or when using App Check debug tokens;
+        // Firebase App Check intercepts via self.FIREBASE_APPCHECK_DEBUG_TOKEN before invoking the provider.
+        const provider = (hasDom && settings.recaptchaKey && !settings.debugToken)
+          ? new sdk.ReCaptchaV3Provider(settings.recaptchaKey)
+          : new sdk.CustomProvider({
+              getToken: async () => {
+                throw new Error('Add your Firebase App Check debug token in Settings (Firebase Console → App Check → Manage debug tokens).');
+              }
+            });
+
         try {
-          const siteKey = settings.recaptchaKey || '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
           sdk.initializeAppCheck(this._app, {
-            provider: new sdk.ReCaptchaV3Provider(siteKey),
+            provider,
             isTokenAutoRefreshEnabled: true
           });
           this._appCheckInitialized = true;
+          this._appCheckError = null;
         } catch (err) {
-          console.warn('[LearnFlow] App Check init warning:', err?.message || err);
+          this._appCheckError = err?.message || String(err);
+          throw new Error(`Firebase App Check initialization failed: ${this._appCheckError}`);
         }
       }
 
@@ -161,21 +191,25 @@ class FirebaseAIProvider {
       ? `Context:\n${contextText.substring(0, 20000)}\n\nUser Question / Task:\n${prompt}`
       : prompt;
 
-    const onDeviceReady = await this.checkOnDeviceStatus();
     const start = Date.now();
     const result = await model.generateContent(fullPrompt);
     const latencyMs = Date.now() - start;
     const text = result?.response?.text?.() || '';
 
-    // Determine likely route: if only_in_cloud -> cloud; if prefer_on_device & onDeviceReady & not forced -> on-device
-    const inferredRoute =
-      mode === sdk.InferenceMode.ONLY_IN_CLOUD
-        ? 'cloud'
-        : mode === sdk.InferenceMode.ONLY_ON_DEVICE || onDeviceReady
-          ? 'on-device'
-          : 'cloud';
+    // Read the actual execution route reported by Firebase AI Logic SDK (response.inferenceSource)
+    const rawSource = result?.response?.inferenceSource;
+    const actualRoute =
+      rawSource === 'on_device'
+        ? 'on-device'
+        : rawSource === 'in_cloud'
+          ? 'cloud'
+          : mode === sdk.InferenceMode.ONLY_IN_CLOUD
+            ? 'cloud'
+            : mode === sdk.InferenceMode.ONLY_ON_DEVICE
+              ? 'on-device'
+              : 'cloud';
 
-    await this._recordMeta(inferredRoute, inferredRoute === 'on-device' ? 'gemini-nano' : settings.modelName, latencyMs);
+    await this._recordMeta(actualRoute, actualRoute === 'on-device' ? 'gemini-nano' : settings.modelName, latencyMs);
     return text.trim() || 'No response generated.';
   }
 
