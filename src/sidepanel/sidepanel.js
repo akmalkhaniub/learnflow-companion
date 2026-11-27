@@ -609,10 +609,25 @@ async function initSettings() {
   const providerSelect = document.getElementById('setting-ai-provider');
   const firebasePanel = document.getElementById('firebase-settings-panel');
   const directPanel = document.getElementById('direct-gemini-settings-panel');
+  // On-device status wording depends on the provider: Firebase AI Logic falls back to its own
+  // cloud model, so it must not ask for a Direct Gemini API key.
+  let nanoAvailable = null;
+  const refreshNanoStatus = (providerId) => {
+    const nanoStatus = document.getElementById('nano-status-label');
+    if (!nanoStatus || nanoAvailable === null) return;
+    if (nanoAvailable) {
+      nanoStatus.textContent = '✓ Chrome built-in Gemini Nano detected — on-device AI is available.';
+    } else if (providerId === 'firebase_ai_logic') {
+      nanoStatus.textContent = 'ℹ️ Gemini Nano isn\'t available in this browser, so Firebase AI Logic will use its Cloud Fallback Model.';
+    } else {
+      nanoStatus.textContent = 'ℹ️ Gemini Nano isn\'t available in this browser. Add a Gemini API key above for cloud AI and figure explanations.';
+    }
+  };
   const toggleProviderPanels = (providerId) => {
     const isFirebase = providerId === 'firebase_ai_logic';
     if (firebasePanel) firebasePanel.style.display = isFirebase ? 'block' : 'none';
     if (directPanel) directPanel.style.display = isFirebase ? 'none' : 'block';
+    refreshNanoStatus(providerId);
   };
 
   const activeProvider = data.learnflow_ai_provider || 'firebase_ai_logic';
@@ -642,7 +657,7 @@ async function initSettings() {
     fbTokenInput.value = data.learnflow_appcheck_debug_token;
   }
   if (fbModeSelect) fbModeSelect.value = data.learnflow_firebase_mode || 'prefer_on_device';
-  if (fbModelInput) fbModelInput.value = data.learnflow_firebase_model || 'gemini-2.5-flash-lite';
+  if (fbModelInput) fbModelInput.value = FirebaseAIProvider.resolveModel(data.learnflow_firebase_model);
 
   document.getElementById('btn-save-firebase-config')?.addEventListener('click', async () => {
     const rawCfg = (fbConfigInput?.value || '').trim();
@@ -666,7 +681,7 @@ async function initSettings() {
       learnflow_firebase_config: parsed,
       learnflow_appcheck_debug_token: (fbTokenInput?.value || '').trim(),
       learnflow_firebase_mode: fbModeSelect?.value || 'prefer_on_device',
-      learnflow_firebase_model: (fbModelInput?.value || 'gemini-2.5-flash-lite').trim()
+      learnflow_firebase_model: FirebaseAIProvider.resolveModel(fbModelInput?.value)
     });
     await updateRouteBadge();
     showSettingsMsg('Firebase AI Logic + App Check settings saved.');
@@ -709,13 +724,8 @@ async function initSettings() {
     finally { event.target.disabled = false; }
   });
 
-  const nanoStatus = document.getElementById('nano-status-label');
-  const nanoAvailable = await GeminiAI.checkNanoAvailability();
-  if (nanoStatus) {
-    nanoStatus.textContent = nanoAvailable
-      ? '✓ Chrome Built-in Gemini Nano detected and ready!'
-      : 'ℹ️ On-device Gemini Nano not active (Enter free API key above for cloud AI + figure explanations).';
-  }
+  nanoAvailable = await GeminiAI.checkNanoAvailability();
+  refreshNanoStatus(providerSelect?.value || activeProvider);
 
   const webhookInput = document.getElementById('setting-gdrive-webhook');
   if (webhookInput && data.gdrive_webhook_url) {

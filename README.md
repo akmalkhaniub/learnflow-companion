@@ -1,9 +1,9 @@
-# 🎧 LearnFlow - Hands-Free Reader & Hybrid AI Companion (v1.5.0)
+# 🎧 LearnFlow - Hands-Free Reader & Hybrid AI Companion (v1.5.1)
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Firebase AI Logic](https://img.shields.io/badge/Firebase-AI%20Logic%20Hybrid-orange.svg)](https://firebase.google.com/docs/ai-logic/hybrid)
 [![Gemini AI](https://img.shields.io/badge/AI-Gemini%20Nano%20%26%20Flash-purple.svg)](https://ai.google.dev/)
-[![Version](https://img.shields.io/badge/Version-1.5.0-orange.svg)](https://github.com/akmalkhaniub/learnflow-companion)
+[![Version](https://img.shields.io/badge/Version-1.5.1-orange.svg)](https://github.com/akmalkhaniub/learnflow-companion)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > Turn any documentation, technical book, or tutorial into a **continuous hands-free audiobook**, powered by **Firebase AI Logic (Hybrid On-Device Gemini Nano + Cloud Fallback with App Check)** and a pluggable AI provider router.
@@ -77,7 +77,7 @@ Reload the unpacked extension at `chrome://extensions`, then refresh article tab
 - **Omnibox Address Bar Integration:** Type `lf <your question>` in Chrome's URL bar, press `Enter`, and the Side Panel immediately opens with Gemini's contextual answer!
 - **2-Minute Executive Audio Briefs:** Click **✨** on the floating player to generate a concise, spoken executive summary tailored for listening on the go.
 - **Smart Code Whisperer:** Understand code without reading curly braces and commas.
-- **Hybrid AI Engine:** Works offline with Chrome's built-in **Gemini Nano** (`window.ai`), or connects to **Gemini 2.0 / 1.5 Flash API** for deep reasoning.
+- **Hybrid AI Engine:** Runs on-device with Chrome's built-in **Gemini Nano** when available, or falls back to **Gemini 3.5 Flash-Lite** in the cloud through Firebase AI Logic.
 
 ### 3. Deep Archival (Tables, Figures, & Multi-Cloud Storage)
 - **Tables Preserved:** Automatically converts HTML tables into clean GitHub-flavored Markdown tables.

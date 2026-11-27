@@ -19,6 +19,16 @@ class FirebaseAIProvider {
     measurementId: 'G-5XPMZTGVHG'
   };
 
+  static DEFAULT_MODEL = 'gemini-3.5-flash-lite';
+
+  // Gemini 1.x/2.x models are retired for new projects (404 "no longer available to new users"),
+  // so saved values from older versions are upgraded to the current default.
+  static resolveModel(name) {
+    const model = (name || '').trim();
+    if (!model || /^gemini-(1\.|2\.)/i.test(model)) return this.DEFAULT_MODEL;
+    return model;
+  }
+
   static _sdk = null;
   static _app = null;
   static _ai = null;
@@ -58,7 +68,7 @@ class FirebaseAIProvider {
       config,
       debugToken: (data.learnflow_appcheck_debug_token || '').trim(),
       recaptchaKey: (data.learnflow_appcheck_recaptcha_key || '').trim(),
-      modelName: (data.learnflow_firebase_model || 'gemini-2.5-flash-lite').trim(),
+      modelName: this.resolveModel(data.learnflow_firebase_model),
       inferenceMode: data.learnflow_firebase_mode || data.learnflow_firebase_inference_mode || 'prefer_on_device'
     };
   }
