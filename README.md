@@ -1,34 +1,36 @@
-# 🎧 LearnFlow - Hands-Free Reader & Hybrid AI Companion (v1.4.0)
+# 🎧 LearnFlow - Hands-Free Reader & Hybrid AI Companion (v1.5.0)
 
 [![Manifest V3](https://img.shields.io/badge/Manifest-V3-blue.svg)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![Firebase AI Logic](https://img.shields.io/badge/Firebase-AI%20Logic%20Hybrid-orange.svg)](https://firebase.google.com/docs/ai-logic/hybrid)
 [![Gemini AI](https://img.shields.io/badge/AI-Gemini%20Nano%20%26%20Flash-purple.svg)](https://ai.google.dev/)
-[![Version](https://img.shields.io/badge/Version-1.4.0-orange.svg)](https://github.com/akmalkhaniub/learnflow-companion)
+[![Version](https://img.shields.io/badge/Version-1.5.0-orange.svg)](https://github.com/akmalkhaniub/learnflow-companion)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > Turn any documentation, technical book, or tutorial into a **continuous hands-free audiobook**, powered by **Firebase AI Logic (Hybrid On-Device Gemini Nano + Cloud Fallback with App Check)** and a pluggable AI provider router.
 
 ---
 
-## What's New in v1.4.0 (#BuildHybridAI 2026)
+## What's New in v1.5.0 (#BuildHybridAI 2026)
 
-- **Firebase AI Logic (Hybrid Inference) + App Check:** Routes text tasks (Code Whisperer, 2-min Audio Brief, Study Quizzes, Anki Flashcards, Vault Search) through `InferenceMode.PREFER_ON_DEVICE` (Chrome Gemini Nano with automatic Cloud fallback) and multimodal **Figure Vision** through `InferenceMode.ONLY_IN_CLOUD`, secured with Firebase App Check.
-- **Pluggable AI Provider Switcher (`AIRouter`):** Switch cleanly in **Settings** between `Firebase AI Logic (Hybrid)` and `Direct Gemini (API Key / Chrome Nano)` (preserving existing `GeminiAI` behavior and enabling future providers).
-- **Live Hybrid Route Badge:** Shows whether the latest AI response executed `⚡ On-Device` or `☁️ Cloud` with latency in milliseconds.
-- **Smart Bar + Multi-Frame & Shadow DOM Highlighting:** Clicking the extension icon opens the compact floating/dockable Smart Bar (with a one-click button to open the full Side Panel), plus word-by-word highlighting inside cross-frame (`skills.google`) and Shadow DOM pages and automatic Smart Bar resume on next-page navigation.
+- **Firebase AI Logic (Hybrid Inference) + MV3 App Check:** Routes text tasks (Code Whisperer, 2-min Audio Brief, Study Quizzes, Anki Flashcards, Vault Search) through `InferenceMode.PREFER_ON_DEVICE` (Chrome Gemini Nano with automatic Cloud fallback) and multimodal **Figure Vision** through `InferenceMode.ONLY_IN_CLOUD`, secured by **Firebase App Check** (DOM-free `CustomProvider` + debug token support for MV3 Service Workers).
+- **Real Hybrid Route Telemetry (`response.inferenceSource`):** Displays the exact engine returned by Firebase AI Logic (`⚡ On-Device` vs `☁️ Cloud`) plus latency in milliseconds.
+- **Pluggable AI Provider Switcher (`AIRouter`):** Defaults to `Firebase AI Logic (Hybrid)`, with `Direct Gemini (Developer Fallback)` available in Settings and a provider registry for future backends.
+- **Smart Bar + Multi-Frame, Shadow DOM & Interactive Lesson Support:** Compact floating/dockable Smart Bar with one-click Side Panel toggle, word-by-word highlighting inside cross-frame (`skills.google`), Shadow DOM, `.fr-view` callouts, and bounded accordions/tabs/process slides, plus `chrome.tts` autoplay fallback across redirected next pages.
 
-### Build & Run Locally (Firebase AI Logic)
+### Build, Test & Run Locally (Firebase AI Logic)
 
 ```bash
 npm install
-npm run build        # Bundles firebase/app, firebase/app-check, and firebase/ai into src/vendor/
-powershell -ExecutionPolicy Bypass -File .\package.ps1   # Creates dist/unpacked/ and dist/*.zip
+npm run build                                           # Bundles firebase/app, firebase/app-check, and firebase/ai into src/vendor/
+powershell -ExecutionPolicy Bypass -File .\package.ps1  # Creates clean dist/unpacked/ and dist/*.zip
+node --test tests/regression.test.cjs                   # 22 unit/regression tests
+python tests/e2e_test.py                                # 18 Playwright E2E browser tests
 ```
 
 1. Open `chrome://extensions/`, enable **Developer mode**, and click **Load unpacked** on `dist/unpacked/` (or remove `node_modules/` before loading the root folder, since Chrome rejects `_`-prefixed files inside `node_modules`).
-2. Create a Firebase project in the [Firebase Console](https://console.firebase.google.com/), enable **Firebase AI Logic** and **App Check** (create an App Check debug token).
-3. Open the LearnFlow Side Panel → **Settings** → paste your Firebase Web Config JSON and App Check debug token → click **Save Firebase AI Settings** → **Test AI connection**.
-4. *(Optional)* Deploy the companion landing page to Firebase Hosting: `firebase deploy --only hosting`.
+2. In the [Firebase Console](https://console.firebase.google.com/), enable **AI Logic** (`Gemini Developer API`) and **App Check** → **Apps** → **Manage debug tokens** → create a debug token.
+3. Open the LearnFlow Side Panel → **Settings** (pre-filled with `learnflow-hybrid-ai`, or paste your own Firebase Web Config JSON) → paste your **App Check debug token** → click **Save Firebase AI Settings** → **Test AI connection**.
+4. Deploy the hosted companion page (`public/index.html`): `firebase deploy --only hosting`.
 
 ## What's New in v1.3.0
 
