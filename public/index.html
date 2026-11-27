@@ -34,7 +34,7 @@
     <div class="grid">
       <div class="card">
         <h3>⚡ On-Device (PREFER_ON_DEVICE)</h3>
-        <p>Code Whisperer explanations, 2-minute section briefings, Anki flashcards, and 3-question Study Quizzes run locally via Gemini Nano at zero cost and low latency.</p>
+        <p>Code Whisperer explanations, 2-minute section briefings, Anki flashcards, and 3-question Study Quizzes run locally via Gemini Nano on supported devices, at zero cost and low latency.</p>
       </div>
       <div class="card">
         <h3>☁️ Cloud Fallback (ONLY_IN_CLOUD)</h3>
@@ -48,11 +48,8 @@
 
     <div class="card">
       <h3>Quick Setup</h3>
-      <pre>git clone https://github.com/akmalkhaniub/learnflow-companion.git
-cd learnflow-companion
-npm install
-npm run build</pre>
-      <p>Load the folder as an unpacked extension in <code>chrome://extensions/</code>, open Settings in the Side Panel, paste your Firebase Web Config JSON + App Check debug token, and click <strong>Test AI connection</strong>.</p>
+      <pre>git clone https://github.com/akmalkhaniub/learnflow-companion.git</pre>
+      <p>In <code>chrome://extensions/</code>, turn on Developer mode and click <strong>Load unpacked</strong> on the cloned folder (no build step needed). Open the Side Panel (<code>Alt+Shift+L</code>) → <strong>Settings</strong>. The Firebase config is pre-filled, so paste an App Check debug token, save, and click <strong>Test AI connection</strong>. On devices without Gemini Nano, every task runs in the cloud automatically.</p>
     </div>
   </main>
 </body>
