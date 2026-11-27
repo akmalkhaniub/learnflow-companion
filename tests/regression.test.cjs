@@ -72,6 +72,7 @@ function audioClient(summarizeCodeBlock) {
   const context = vm.createContext({
     window: {speechSynthesis: synth}, document: {querySelectorAll: () => []},
     chrome: {storage: {local: {get: async () => ({})}}},
+    AIRouter: {summarizeCodeBlock},
     GeminiAI: {summarizeCodeBlock}, SpeechSynthesisUtterance: function(text) {this.text = text;},
     setInterval: () => 1, clearInterval() {}, console
   });
@@ -252,4 +253,17 @@ test('Chapter buttons that replace content in place can resume without a URL cha
   vm.runInContext(readSource('src/content/auto_navigator.js'), context);
   assert.equal(await context.window.AutoNavigator.checkAutoResume(), true);
   assert.equal(pending, null);
+});
+
+test('Redirected Next links without an explicit destination URL still auto-resume once', async () => {
+  const data = new Map();
+  const location = {href: 'https://example.test/activities/123'};
+  const context = vm.createContext({window: {location}, URL, Date, sessionStorage: {
+    getItem: key => data.get(key), setItem: (key, value) => data.set(key, value), removeItem: key => data.delete(key)
+  }});
+  vm.runInContext(readSource('src/content/auto_navigator.js'), context);
+  data.set('learnflow_navigation', JSON.stringify({from: location.href, timestamp: Date.now()}));
+  location.href = 'https://example.test/documents/456';
+  assert.equal(await context.window.AutoNavigator.checkAutoResume(), true);
+  assert.equal(await context.window.AutoNavigator.checkAutoResume(), false);
 });

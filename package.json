@@ -5,6 +5,7 @@
   "description": "LearnFlow & Ask Gemini Companion - Hybrid AI Chrome Extension",
   "scripts": {
     "build": "node scripts/build_firebase_vendor.mjs",
+    "test:regression": "node tests/regression.test.cjs",
     "test": "python tests/e2e_test.py"
   },
   "dependencies": {

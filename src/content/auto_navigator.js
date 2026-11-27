@@ -133,20 +133,28 @@ class AutoNavigator {
           sessionStorage.removeItem('learnflow_navigation');
         } else {
           const current = this._canonical(window.location.href);
-          const contentChanged = pending.content !== undefined && pending.content !== (document.querySelector('#sbo-rt-content, article, main')?.textContent || '').slice(0, 12000);
+          const hasDoc = typeof document !== 'undefined';
+          const contentChanged = pending.content !== undefined && hasDoc && pending.content !== (document.querySelector('#sbo-rt-content, article, main')?.textContent || '').slice(0, 12000);
           // Allow HTTP redirects on Next links (e.g. skills.google /activities/... -> /documents/...):
-          // any URL or content change after advanceToNext() qualifies for auto-resume.
-          if (current !== pending.from || contentChanged) {
+          // when `to` is omitted, any URL or content change after advanceToNext() qualifies.
+          const matchesDestination = pending.to
+            ? current === this._canonical(pending.to)
+            : (current !== pending.from || contentChanged);
+          if (matchesDestination) {
             sessionStorage.removeItem('learnflow_navigation');
-            await chrome.storage.local.remove(['learnflow_auto_play_next', 'learnflow_auto_play_origin', 'learnflow_last_navigated']).catch(() => {});
+            if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
+              await chrome.storage.local.remove(['learnflow_auto_play_next', 'learnflow_auto_play_origin', 'learnflow_last_navigated']).catch(() => {});
+            }
             return true;
           }
         }
       }
-      const data = await chrome.storage.local.get(['learnflow_auto_play_next', 'learnflow_last_navigated']);
-      if (data.learnflow_auto_play_next && (!data.learnflow_last_navigated || Date.now() - data.learnflow_last_navigated < 120000)) {
-        await chrome.storage.local.remove(['learnflow_auto_play_next', 'learnflow_auto_play_origin', 'learnflow_last_navigated']);
-        return true;
+      if (typeof chrome !== 'undefined' && chrome?.storage?.local) {
+        const data = await chrome.storage.local.get(['learnflow_auto_play_next', 'learnflow_last_navigated']);
+        if (data.learnflow_auto_play_next && (!data.learnflow_last_navigated || Date.now() - data.learnflow_last_navigated < 120000)) {
+          await chrome.storage.local.remove(['learnflow_auto_play_next', 'learnflow_auto_play_origin', 'learnflow_last_navigated']);
+          return true;
+        }
       }
       return false;
     } catch { return false; }
